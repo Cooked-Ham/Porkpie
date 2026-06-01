@@ -493,6 +493,9 @@ It does **NOT** verify that the underlying heap memory is zeroized. The `zeroize
 
 **The project is not production-ready.** The single largest blocker is the lack of an external security audit (Commercial/Enterprise trust gate requirement). The web shell has encrypted persistence via `localStorage`. Memory zeroization is best-effort and verified by tests.
 
+**Porkpie is now suitable for Developer Alpha and controlled Personal Dogfood with explicit risk acceptance.**
+**It is not externally audited and should not be broadly recommended for other people's high-value credentials yet.**
+
 **Fix the docs first. Then fix the gaps. Then audit.**
 
-> **Porkpie: foundational Rust prototype, not safe for real credentials yet.**
+> **Porkpie: suitable for Developer Alpha and controlled Personal Dogfood with explicit risk acceptance. Not safe for other people's high-value credentials yet.**

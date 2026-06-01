@@ -35,7 +35,7 @@ Porkpie defines four maturity stages for credential use. Each stage requires spe
 
 ## Current Status
 
-Porkpie is currently at **Developer Alpha**. It is a foundational Rust prototype with real crypto and real architecture, but it is **not safe for real credentials yet**.
+Porkpie is currently at **Developer Alpha / Personal Dogfood**. It is a foundational Rust prototype with real crypto and real architecture. It is not externally audited and should not be broadly recommended for other people's high-value credentials yet.
 
 ## External Audit
 

@@ -302,11 +302,14 @@ async fn audit_log_records_api_key_self_revoke_denied() {
         .expect("connect database");
     db::run_migrations(&pool).await.expect("run migrations");
 
-    db::log_admin_audit(&pool, "api_key_self_revoke_denied").await.unwrap();
-
-    let rows = sqlx::query("SELECT event FROM audit_log WHERE event = 'api_key_self_revoke_denied'")
-        .fetch_all(&pool)
+    db::log_admin_audit(&pool, "api_key_self_revoke_denied")
         .await
-        .expect("query audit log");
+        .unwrap();
+
+    let rows =
+        sqlx::query("SELECT event FROM audit_log WHERE event = 'api_key_self_revoke_denied'")
+            .fetch_all(&pool)
+            .await
+            .expect("query audit log");
     assert_eq!(rows.len(), 1);
 }

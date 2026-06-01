@@ -48,7 +48,17 @@ pub async fn verify(_context: &CommandContext, kit_path: &Path) -> Result<()> {
 /// Reads the recovery kit for the vault_id and local_secret_key, then reads
 /// the encrypted backup file, prompts for the master password, decrypts the
 /// backup, and stores the vault + items in the local database.
-pub async fn restore(context: &CommandContext, kit_path: &Path, backup_path: &Path) -> Result<()> {
+///
+/// The `store` parameter is optional; if provided, the secret key will be
+/// stored in the given secret store. If `None`, the secret key is not
+/// persisted to a keychain.
+pub async fn restore_with_store_and_password(
+    context: &CommandContext,
+    kit_path: &Path,
+    backup_path: &Path,
+    store: Option<&dyn crate::secret_store::SecretStore>,
+    password: &str,
+) -> Result<()> {
     // Read the recovery kit.
     let kit_contents = std::fs::read_to_string(kit_path).map_err(CliError::Io)?;
     let kit: serde_json::Value = serde_json::from_str(&kit_contents)
@@ -76,13 +86,6 @@ pub async fn restore(context: &CommandContext, kit_path: &Path, backup_path: &Pa
         )));
     }
 
-    // Prompt for the master password.
-    println!(
-        "Restoring vault {}. Enter the master password for this backup:",
-        vault_id
-    );
-    let password = crate::interactive::prompt_master_password()?;
-
     // Get existing item IDs from the database (empty set if vault doesn't exist yet).
     let pool = context.pool().await?;
     let existing_item_ids = match load_items(&pool, &backup.vault.id).await {
@@ -102,10 +105,11 @@ pub async fn restore(context: &CommandContext, kit_path: &Path, backup_path: &Pa
         skipped,
     } = import_backup(
         backup,
-        &password,
+        password,
         &secret_key,
         &existing_item_ids,
         BackupImportMode::SkipDuplicates,
+        Some(vault_id),
     )
     .map_err(|e| CliError::InvalidArgument(format!("failed to decrypt backup: {e}")))?;
 
@@ -120,8 +124,8 @@ pub async fn restore(context: &CommandContext, kit_path: &Path, backup_path: &Pa
         store_item(&pool, item).await.map_err(CliError::Store)?;
     }
 
-    // Store the secret key in the keychain.
-    if let Some(store) = crate::secret_store::default_secret_store() {
+    // Store the secret key in the keychain if a store is provided.
+    if let Some(store) = store {
         if let Err(e) = store.store_local_secret_key(&vault_id, &secret_key) {
             eprintln!("Warning: could not store secret key in OS keychain: {e}");
             eprintln!("You will need to provide the secret key manually when unlocking.");
@@ -138,4 +142,22 @@ pub async fn restore(context: &CommandContext, kit_path: &Path, backup_path: &Pa
     println!("  Secret key: stored in OS keychain (or manual entry required)");
     println!("Next: porkpie unlock");
     Ok(())
+}
+
+pub async fn restore_with_store(
+    context: &CommandContext,
+    kit_path: &Path,
+    backup_path: &Path,
+    store: Option<&dyn crate::secret_store::SecretStore>,
+) -> Result<()> {
+    let password = crate::interactive::prompt_master_password()?;
+    restore_with_store_and_password(context, kit_path, backup_path, store, &password).await
+}
+
+pub async fn restore(context: &CommandContext, kit_path: &Path, backup_path: &Path) -> Result<()> {
+    let store = crate::secret_store::default_secret_store();
+    match store {
+        Some(ref s) => restore_with_store(context, kit_path, backup_path, Some(s.as_ref())).await,
+        None => restore_with_store(context, kit_path, backup_path, None).await,
+    }
 }

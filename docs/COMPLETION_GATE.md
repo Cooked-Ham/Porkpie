@@ -84,4 +84,6 @@ Porkpie cannot be called an MVP until every gate below passes. These gates are t
 2. Memory zeroization is verified by state tests but not by raw memory probe tests (Security Gate).
 3. Session file no longer stores local secret key in new sessions; legacy migration exists.
 
-Porkpie is a foundational Rust prototype with real crypto and real architecture. It is not an MVP. It is not safe for real credentials yet.
+Porkpie is a foundational Rust prototype with real crypto and real architecture. It is not an MVP. It is not externally audited and should not be broadly recommended for other people's high-value credentials yet.
+
+Porkpie is now suitable for Developer Alpha and controlled Personal Dogfood with explicit risk acceptance.

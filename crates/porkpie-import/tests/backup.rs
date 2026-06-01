@@ -26,6 +26,7 @@ fn backup_roundtrip_keeps_secret_data_encrypted() {
         &secret_key,
         &HashSet::new(),
         BackupImportMode::SkipDuplicates,
+        None,
     )
     .expect("import backup");
 
@@ -53,6 +54,7 @@ fn backup_import_rejects_wrong_password() {
         &secret_key,
         &HashSet::new(),
         BackupImportMode::SkipDuplicates,
+        None,
     )
     .expect_err("wrong password should fail");
 
@@ -73,6 +75,7 @@ fn backup_import_skips_duplicates() {
         &secret_key,
         &existing,
         BackupImportMode::SkipDuplicates,
+        None,
     )
     .expect("import backup");
 

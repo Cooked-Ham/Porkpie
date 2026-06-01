@@ -69,7 +69,10 @@ pub async fn run_agent(context: &CommandContext) -> Result<()> {
             // 2. Raw 64-char hex string (32 bytes) -> direct Ed25519 seed
             // 3. Base64-encoded raw key
             let signer_result = if secret.private_key.contains("OPENSSH PRIVATE KEY") {
-                porkpie_agent::Ed25519Signer::from_openssh(&secret.private_key, secret.passphrase.as_deref())
+                porkpie_agent::Ed25519Signer::from_openssh(
+                    &secret.private_key,
+                    secret.passphrase.as_deref(),
+                )
             } else if secret.private_key.len() == 64 {
                 // Try hex
                 if let Ok(bytes) = hex::decode(&secret.private_key) {
@@ -98,16 +101,15 @@ pub async fn run_agent(context: &CommandContext) -> Result<()> {
                         } else {
                             Err(porkpie_agent::SignerError::KeyParse(format!(
                                 "SSH key '{}' private key decoded to {} bytes (expected 32).",
-                                secret.name, decoded.len()
+                                secret.name,
+                                decoded.len()
                             )))
                         }
                     }
-                    Err(e) => {
-                        Err(porkpie_agent::SignerError::KeyParse(format!(
-                            "SSH key '{}' private key is not valid base64: {e}.",
-                            secret.name
-                        )))
-                    }
+                    Err(e) => Err(porkpie_agent::SignerError::KeyParse(format!(
+                        "SSH key '{}' private key is not valid base64: {e}.",
+                        secret.name
+                    ))),
                 }
             };
 

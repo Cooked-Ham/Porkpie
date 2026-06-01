@@ -170,13 +170,12 @@ pub async fn admin_revoke_api_key(
         ));
     }
 
-    let key_hash = db::revoke_api_key_by_id(&state.pool, key_id).await?;
+    let _key_hash = db::revoke_api_key_by_id(&state.pool, key_id).await?;
     db::log_admin_audit(&state.pool, "api_key_revoke").await?;
 
     Ok(Json(serde_json::json!({
         "ok": true,
         "key_id": key_id,
-        "key_hash": key_hash,
         "message": "API key revoked."
     })))
 }

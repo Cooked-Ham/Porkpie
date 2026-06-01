@@ -85,9 +85,7 @@ impl SessionState {
                 Ok(None) => {}
                 Err(_e) => {
                     #[cfg(debug_assertions)]
-                    eprintln!(
-                        "[porkpie] keychain load failed: {e}; falling back to legacy session"
-                    );
+                    eprintln!("[porkpie] keychain load failed; falling back to legacy session");
                 }
             }
         }
@@ -147,7 +145,7 @@ impl SessionState {
         if let Some(key) = key {
             if let Err(_e) = store.store_local_secret_key(&vault_id, &key) {
                 #[cfg(debug_assertions)]
-                eprintln!("[porkpie] keychain migration failed: {e}; keeping legacy field");
+                eprintln!("[porkpie] keychain migration failed; keeping legacy field");
                 return Ok(());
             }
             // Clear legacy fields.

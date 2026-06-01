@@ -82,9 +82,17 @@ pub fn import_backup_file(
     secret_key: &LocalSecretKey,
     existing_item_ids: &HashSet<String>,
     mode: BackupImportMode,
+    vault_id: Option<&str>,
 ) -> Result<BackupImportResult> {
     let backup = read_backup_file(path)?;
-    import_backup(backup, password, secret_key, existing_item_ids, mode)
+    import_backup(
+        backup,
+        password,
+        secret_key,
+        existing_item_ids,
+        mode,
+        vault_id,
+    )
 }
 
 pub fn import_backup(
@@ -93,8 +101,21 @@ pub fn import_backup(
     secret_key: &LocalSecretKey,
     existing_item_ids: &HashSet<String>,
     mode: BackupImportMode,
+    vault_id: Option<&str>,
 ) -> Result<BackupImportResult> {
     validate_backup(&backup)?;
+
+    if let Some(expected_id) = vault_id {
+        let backup_id = backup.vault.id.to_string();
+        if backup_id != expected_id {
+            return Err(ImportError::InvalidRow {
+                row: 0,
+                message: format!(
+                    "backup vault_id ({backup_id}) does not match expected vault_id ({expected_id})"
+                ),
+            });
+        }
+    }
 
     let mut vault = backup.vault.clone().into_locked_vault();
     vault.unlock(password, secret_key)?;

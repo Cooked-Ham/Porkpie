@@ -579,7 +579,7 @@ mod sqlite_impl {
                     .map(|(id,)| id)
                     .collect();
             let result =
-                porkpie_import::import_backup(backup, password, secret_key, &existing, mode)
+                porkpie_import::import_backup(backup, password, secret_key, &existing, mode, None)
                     .map_err(|error| VaultStoreError::Import(error.to_string()))?;
             let mut vault = self.vault.lock().await;
             for item in &result.items {
@@ -950,7 +950,7 @@ mod local_storage_impl {
                 .map(|item| item.id.to_string())
                 .collect();
             let result =
-                porkpie_import::import_backup(backup, password, secret_key, &existing, mode)
+                porkpie_import::import_backup(backup, password, secret_key, &existing, mode, None)
                     .map_err(|error| VaultStoreError::Import(error.to_string()))?;
             let mut vault = self.vault.lock().unwrap();
             let mut items = guard.load_items(&self.summary.id.to_string())?;

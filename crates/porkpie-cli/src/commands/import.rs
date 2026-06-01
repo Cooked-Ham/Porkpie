@@ -51,6 +51,7 @@ async fn import_backup(context: &CommandContext, file: &Path) -> Result<()> {
         &secret_key,
         &existing_item_ids,
         BackupImportMode::SkipDuplicates,
+        None,
     )?;
     let vault_id = vault.id;
     let locked_vault = vault.into_locked_vault();

@@ -2,7 +2,7 @@
 
 Date: 2026-06-01
 Auditor: Agentic QA Pass
-Status: **Porkpie remains a foundational Rust prototype. Not safe for real credentials yet.**
+Status: **Porkpie is now suitable for Developer Alpha and controlled Personal Dogfood with explicit risk acceptance. It is not externally audited and should not be broadly recommended for other people's high-value credentials yet.**
 
 ## Summary
 
@@ -282,7 +282,10 @@ Additional validation:
 
 ## Real Credentials Safe to Use?
 
-**No.** Porkpie is not safe for real credentials yet.
+**No.** Porkpie is not safe for other people's high-value credentials yet.
+
+Porkpie is now suitable for Developer Alpha and controlled Personal Dogfood with explicit risk acceptance.
+It is not externally audited and should not be broadly recommended for other people's high-value credentials yet.
 
 Reasons:
 1. No external security audit (Commercial/Enterprise gate requirement).
@@ -299,7 +302,7 @@ Reasons:
 
 Until these are completed, the safe label remains:
 
-> **Porkpie: foundational Rust prototype with real crypto and real architecture, but not safe for real credentials yet.**
+> **Porkpie: suitable for Developer Alpha and controlled Personal Dogfood with explicit risk acceptance. Not safe for other people's high-value credentials yet.**
 
 ## Long-Horizon Security Follow-Up (2026-06-01)
 

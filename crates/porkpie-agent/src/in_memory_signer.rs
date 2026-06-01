@@ -46,7 +46,8 @@ impl Ed25519Signer {
             .map_err(|e| SignerError::KeyParse(format!("invalid OpenSSH key: {e}")))?;
         if private_key.is_encrypted() {
             return Err(SignerError::KeyParse(
-                "encrypted OpenSSH keys are not supported; decrypt the key first or use a raw seed".to_string(),
+                "encrypted OpenSSH keys are not supported; decrypt the key first or use a raw seed"
+                    .to_string(),
             ));
         }
         let keypair = private_key
@@ -153,7 +154,10 @@ bQP0o+gL5aKK8cQgiIlXeDbRjqhc4+h4EF6lY=
         let result = Ed25519Signer::from_openssh(encrypted_pem, None);
         assert!(result.is_err());
         let err = result.unwrap_err().0;
-        assert!(err.contains("encrypted"), "error should mention encrypted: {err}");
+        assert!(
+            err.contains("encrypted"),
+            "error should mention encrypted: {err}"
+        );
     }
 
     #[test]

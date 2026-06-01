@@ -1,6 +1,7 @@
 # Status
 
-Porkpie is a foundational Rust prototype, not safe for real credentials yet.
+Porkpie is now suitable for Developer Alpha and controlled Personal Dogfood with explicit risk acceptance.
+It is not externally audited and should not be broadly recommended for other people's high-value credentials yet.
 
 ## Environment Setup
 

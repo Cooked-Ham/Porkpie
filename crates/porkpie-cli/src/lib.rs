@@ -324,9 +324,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Keychain(KeychainCommands::Status) => {
             commands::keychain::run_status(&context).await
         }
-        Commands::Keychain(KeychainCommands::Test) => {
-            commands::keychain::run_test(&context).await
-        }
+        Commands::Keychain(KeychainCommands::Test) => commands::keychain::run_test(&context).await,
         Commands::Keychain(KeychainCommands::Forget { vault }) => {
             commands::keychain::run_forget(&context, &vault).await
         }

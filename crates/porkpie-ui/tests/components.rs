@@ -49,8 +49,10 @@ fn password_generator_state_zeroizes_on_drop() {
 #[test]
 fn app_state_lock_clears_decrypted_state() {
     use porkpie_ui::state::{AppState, Screen};
-    let mut state = AppState::default();
-    state.screen = Screen::List;
+    let mut state = AppState {
+        screen: Screen::List,
+        ..AppState::default()
+    };
     state.password_generator.generated_password = "secret-password".to_string();
     state.lock();
     assert_eq!(state.screen, Screen::Unlock);

@@ -806,13 +806,22 @@ async fn admin_revoke_api_key_rejects_self_revoke() {
         .unwrap()
         .contains("Cannot revoke the API key currently in use"));
 
-    // Prove the key is still active in the database.
+    // Prove the key is still active and its hash unchanged in the database.
     let active: (i64,) = sqlx::query_as("SELECT active FROM api_keys WHERE id = ?")
         .bind(current_key_id)
         .fetch_one(&pool)
         .await
         .expect("check active");
     assert_eq!(active.0, 1);
+    let hash_after: String = sqlx::query_scalar("SELECT api_key_hash FROM api_keys WHERE id = ?")
+        .bind(current_key_id)
+        .fetch_one(&pool)
+        .await
+        .expect("check hash");
+    assert_eq!(
+        hash_after, current_hash,
+        "key hash must not change after failed self-revoke"
+    );
 }
 
 #[tokio::test]

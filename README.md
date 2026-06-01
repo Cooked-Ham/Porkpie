@@ -1,8 +1,9 @@
 # Porkpie
 
-> **WARNING: Do not use Porkpie with real credentials yet. This is a prototype pending hardening and security review.**
+> **WARNING:** Do not use Porkpie with real credentials yet. This is a prototype pending hardening and security review.
 
-Porkpie is a foundational Rust prototype, not safe for real credentials yet.
+Porkpie is now suitable for Developer Alpha and controlled Personal Dogfood with explicit risk acceptance.
+It is not externally audited and should not be broadly recommended for other people's high-value credentials yet.
 
 Local-first, zero-knowledge, self-hostable password manager for developers, homelab users, and small teams.
 

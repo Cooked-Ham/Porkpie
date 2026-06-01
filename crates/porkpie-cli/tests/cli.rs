@@ -1,6 +1,8 @@
 use clap::{CommandFactory, Parser};
 use porkpie_cli::secret_store::SecretStore;
-use porkpie_cli::{BackupCommands, Cli, Commands, ItemCommands, KeychainCommands, RecoveryCommands, SshCommands};
+use porkpie_cli::{
+    BackupCommands, Cli, Commands, ItemCommands, KeychainCommands, RecoveryCommands, SshCommands,
+};
 use porkpie_types::{LocalSecretKey, VaultId};
 
 #[test]
@@ -459,7 +461,12 @@ fn parses_keychain_test_command() {
 
 #[test]
 fn parses_keychain_forget_command() {
-    let cli = Cli::parse_from(["porkpie", "keychain", "forget", "550e8400-e29b-41d4-a716-446655440000"]);
+    let cli = Cli::parse_from([
+        "porkpie",
+        "keychain",
+        "forget",
+        "550e8400-e29b-41d4-a716-446655440000",
+    ]);
     assert!(matches!(
         cli.command,
         Commands::Keychain(KeychainCommands::Forget { vault }) if vault == "550e8400-e29b-41d4-a716-446655440000"
