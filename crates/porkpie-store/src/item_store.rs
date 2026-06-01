@@ -72,6 +72,24 @@ pub async fn load_items(pool: &SqlitePool, vault_id: &VaultId) -> Result<Vec<(It
         .collect()
 }
 
+/// Load all encrypted item ciphertexts with item type for a vault.
+pub async fn load_items_with_type(
+    pool: &SqlitePool,
+    vault_id: &VaultId,
+) -> Result<Vec<(ItemId, String, Vec<u8>)>> {
+    let rows = sqlx::query_as::<_, (String, String, Vec<u8>)>(
+        "SELECT id, item_type, ciphertext FROM items WHERE vault_id = ? ORDER BY created_at, id",
+    )
+    .bind(vault_id.to_string())
+    .fetch_all(pool)
+    .await
+    .map_err(map_sqlx_error)?;
+
+    rows.into_iter()
+        .map(|(id, item_type, ciphertext)| Ok((parse_item_id(id)?, item_type, ciphertext)))
+        .collect()
+}
+
 /// Update an encrypted item ciphertext and revision metadata.
 pub async fn update_item(pool: &SqlitePool, item_id: &ItemId, ciphertext: &[u8]) -> Result<()> {
     let now = Timestamp::now();

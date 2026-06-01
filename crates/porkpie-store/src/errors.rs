@@ -9,6 +9,8 @@ pub type Result<T> = std::result::Result<T, StoreError>;
 pub enum StoreError {
     #[error("Vault not found: {0}")]
     VaultNotFound(VaultId),
+    #[error("Vault not found: {0}")]
+    VaultNotFoundByName(String),
     #[error("Item not found: {0}")]
     ItemNotFound(ItemId),
     #[error("Database constraint violation: {0}")]

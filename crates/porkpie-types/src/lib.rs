@@ -1,13 +1,21 @@
+pub mod aad;
 pub mod constants;
 pub mod errors;
+pub mod field_access;
 pub mod ids;
 pub mod item_type;
+pub mod pie_uri;
+pub mod secret_key;
 pub mod timestamp;
 pub mod vault;
 
+pub use aad::*;
 pub use constants::*;
 pub use errors::*;
+pub use field_access::*;
 pub use ids::*;
 pub use item_type::*;
+pub use pie_uri::*;
+pub use secret_key::*;
 pub use timestamp::*;
 pub use vault::*;

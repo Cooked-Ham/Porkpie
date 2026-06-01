@@ -18,6 +18,7 @@ const MIGRATIONS: &[&str] = &[
     r#"
     CREATE TABLE IF NOT EXISTS vaults (
         id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL UNIQUE,
         created_at INTEGER NOT NULL,
         salt BLOB NOT NULL,
         master_key_wrapped BLOB NOT NULL,
@@ -46,4 +47,5 @@ const MIGRATIONS: &[&str] = &[
     "#,
     "CREATE INDEX IF NOT EXISTS idx_items_vault_id ON items(vault_id);",
     "CREATE INDEX IF NOT EXISTS idx_items_type ON items(item_type);",
+    "CREATE INDEX IF NOT EXISTS idx_vaults_name ON vaults(name);",
 ];

@@ -1,5 +1,10 @@
-use porkpie_core::{CoreError, Item, Vault};
+use porkpie_core::{CoreError, Item, LocalSecretKey, Vault};
 use porkpie_types::{ItemId, ItemType, LoginSecret, SecureNoteSecret};
+
+fn test_secret_key() -> LocalSecretKey {
+    LocalSecretKey::from_hex("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+        .unwrap()
+}
 
 fn login_item(password: &str) -> Item {
     Item::new(ItemType::Login(LoginSecret {
@@ -19,7 +24,12 @@ fn note_item(content: &str) -> Item {
 
 #[test]
 fn create_list_update_delete_items_work() {
-    let mut vault = Vault::create("correct horse battery staple").expect("vault should be created");
+    let (mut vault, _) = Vault::create(
+        "TestVault",
+        "correct horse battery staple",
+        &test_secret_key(),
+    )
+    .expect("vault should be created");
 
     let id = vault
         .create_item(login_item("first-secret"))
@@ -49,7 +59,12 @@ fn create_list_update_delete_items_work() {
 
 #[test]
 fn missing_items_return_specific_error() {
-    let vault = Vault::create("correct horse battery staple").expect("vault should be created");
+    let (vault, _) = Vault::create(
+        "TestVault",
+        "correct horse battery staple",
+        &test_secret_key(),
+    )
+    .expect("vault should be created");
 
     assert!(matches!(
         vault.get_item(ItemId::new()),
@@ -59,7 +74,12 @@ fn missing_items_return_specific_error() {
 
 #[test]
 fn update_missing_item_does_not_bump_revision() {
-    let mut vault = Vault::create("correct horse battery staple").expect("vault should be created");
+    let (mut vault, _) = Vault::create(
+        "TestVault",
+        "correct horse battery staple",
+        &test_secret_key(),
+    )
+    .expect("vault should be created");
 
     assert!(matches!(
         vault.update_item(ItemId::new(), note_item("replacement")),

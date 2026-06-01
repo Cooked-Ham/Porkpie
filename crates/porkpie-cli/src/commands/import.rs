@@ -36,6 +36,8 @@ async fn import_csv(context: &CommandContext, file: &Path) -> Result<()> {
 
 async fn import_backup(context: &CommandContext, file: &Path) -> Result<()> {
     let password = crate::interactive::prompt_master_password()?;
+    let session = context.load_session()?;
+    let secret_key = session.require_secret_key()?;
     let pool = context.pool().await?;
     let existing_item_ids = existing_item_ids(&pool, file).await?;
     let BackupImportResult {
@@ -46,6 +48,7 @@ async fn import_backup(context: &CommandContext, file: &Path) -> Result<()> {
     } = import_backup_file(
         file,
         &password,
+        &secret_key,
         &existing_item_ids,
         BackupImportMode::SkipDuplicates,
     )?;

@@ -1,0 +1,69 @@
+use porkpie_api::db;
+use sqlx::Row;
+
+#[tokio::test]
+async fn api_key_is_stored_as_hash_not_plaintext() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+
+    let raw_key = "my-super-secret-api-key-12345";
+    db::upsert_api_key(&pool, raw_key)
+        .await
+        .expect("upsert api key");
+
+    let rows = sqlx::query("SELECT api_key_hash FROM api_keys")
+        .fetch_all(&pool)
+        .await
+        .expect("query api keys");
+
+    assert_eq!(rows.len(), 1);
+    let stored_hash: String = rows[0].get("api_key_hash");
+
+    assert_ne!(
+        stored_hash, raw_key,
+        "raw API key must not be stored in the database"
+    );
+    assert_eq!(
+        stored_hash,
+        db::hash_api_key(raw_key),
+        "stored value must be the SHA-256 hash of the API key"
+    );
+    assert_eq!(
+        stored_hash.len(),
+        64,
+        "SHA-256 hex digest must be 64 characters"
+    );
+}
+
+#[tokio::test]
+async fn api_key_validation_uses_hash_comparison() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+
+    let raw_key = "correct-key-abc";
+    db::upsert_api_key(&pool, raw_key)
+        .await
+        .expect("upsert api key");
+
+    assert!(
+        db::api_key_exists(&pool, raw_key).await.expect("check key"),
+        "correct key must validate"
+    );
+    assert!(
+        !db::api_key_exists(&pool, "wrong-key-xyz")
+            .await
+            .expect("check key"),
+        "wrong key must not validate"
+    );
+}
+
+#[tokio::test]
+async fn different_api_keys_produce_different_hashes() {
+    let hash_a = db::hash_api_key("key-alpha");
+    let hash_b = db::hash_api_key("key-beta");
+    assert_ne!(hash_a, hash_b);
+}

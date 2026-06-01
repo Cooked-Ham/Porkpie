@@ -12,7 +12,7 @@ tags: [feature, architecture, product-readiness]
 
 ![Status: Planned](https://img.shields.io/badge/status-Planned-blue)
 
-This plan outlines the steps required to take the Porkpie password manager from its current complete MVP state to a fully "sell-worthy" production product. The current codebase has implemented the core requirements, including the local SQLite vaults, CLI, Dioxus UI, HTTP Sync API, and zero-knowledge cryptography. However, to be commercially viable, it requires deeper OS integration, browser extensions, expanded importers, and recovery features.
+This plan outlines the steps required to take the Porkpie password manager from its current foundational prototype state to a fully "sell-worthy" production product. The current codebase has implemented core backend requirements including local SQLite vaults, CLI, HTTP Sync API, and zero-knowledge cryptography. The Dioxus UI is a static mockup without real interactivity. Desktop and web app shells are empty stubs. The `pie://` URI scheme is not yet implemented. Before commercial viability, the project requires honest completion of all foundation gates, deeper OS integration, browser extensions, expanded importers, and recovery features.
 
 ## 1. Requirements & Constraints
 

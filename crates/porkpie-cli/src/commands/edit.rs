@@ -3,13 +3,15 @@ use crate::errors::{map_store_error, Result};
 use crate::interactive::{item_type_name, prompt_updated_item};
 use porkpie_store::{load_item, load_item_record, update_item};
 
-/// Edit an existing encrypted item.
 pub async fn run(context: &CommandContext, id: &str) -> Result<()> {
     let item_id = parse_item_id(id)?;
     let vault = unlock_current_vault(context).await?;
     let pool = context.pool().await?;
+    let record = load_item_record(&pool, &item_id)
+        .await
+        .map_err(map_store_error)?;
     let ciphertext = load_item(&pool, &item_id).await.map_err(map_store_error)?;
-    let current_item = vault.decrypt_item(&ciphertext)?;
+    let current_item = vault.decrypt_item(&ciphertext, &item_id, &record.item_type)?;
     let mut replacement = prompt_updated_item(&current_item)?;
 
     replacement.id = item_id;

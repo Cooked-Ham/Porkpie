@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncryptedVaultData {
     pub id: VaultId,
+    pub name: String,
     pub created_at: Timestamp,
     pub salt: [u8; 32],
     pub master_key_wrapped: Vec<u8>,
@@ -18,6 +19,7 @@ impl EncryptedVaultData {
     pub fn into_locked_vault(self) -> Vault {
         Vault::from_encrypted_metadata(
             self.id,
+            self.name,
             self.created_at,
             self.salt,
             self.master_key_wrapped,

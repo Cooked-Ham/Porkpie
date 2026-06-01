@@ -4,19 +4,19 @@ use porkpie_crypto::{
     decrypt_item, derive_key, encrypt_item, unwrap_vault_key, wrap_vault_key, Argon2Params,
     CryptoError,
 };
-use porkpie_types::{ItemId, Timestamp, VaultId};
+use porkpie_types::{
+    build_item_aad, build_payload_aad, ItemId, ItemType, LocalSecretKey, RecoveryKit, Timestamp,
+    VaultId,
+};
 use rand::{rngs::OsRng, RngCore};
 use secrecy::Secret;
 use serde::{de::DeserializeOwned, Serialize};
 use std::collections::HashMap;
 use zeroize::Zeroizing;
 
-/// In-memory vault domain object.
-///
-/// Decrypted items and the raw vault key are only present while the vault is unlocked.
-/// Persistent fields such as `master_key_wrapped` and `salt` are encrypted metadata.
 pub struct Vault {
     pub id: VaultId,
+    pub name: String,
     pub created_at: Timestamp,
     pub salt: [u8; 32],
     pub master_key_wrapped: Vec<u8>,
@@ -27,29 +27,45 @@ pub struct Vault {
 }
 
 impl Vault {
-    /// Create a new unlocked vault from a master password.
-    pub fn create(password: &str) -> Result<Self> {
+    pub fn create(
+        name: &str,
+        password: &str,
+        secret_key: &LocalSecretKey,
+    ) -> Result<(Self, RecoveryKit)> {
         let salt = random_bytes();
         let password = Secret::new(password.to_owned());
-        let master_key = Zeroizing::new(derive_key(&password, &salt, &Argon2Params::default())?);
+        let master_key = Zeroizing::new(derive_key(
+            &password,
+            secret_key.as_bytes(),
+            &salt,
+            &Argon2Params::default(),
+        )?);
         let vault_key = Zeroizing::new(random_bytes());
         let master_key_wrapped = wrap_vault_key(&master_key, &vault_key)?;
 
-        Ok(Self {
-            id: VaultId::new(),
-            created_at: Timestamp::now(),
-            salt,
-            master_key_wrapped,
-            items: HashMap::new(),
-            is_locked: false,
-            sync_revision: 0,
-            vault_key: Some(vault_key),
-        })
+        let id = VaultId::new();
+        let created_at = Timestamp::now();
+        let recovery_kit = RecoveryKit::new(&id.to_string(), secret_key, created_at.to_millis());
+
+        Ok((
+            Self {
+                id,
+                name: name.to_string(),
+                created_at,
+                salt,
+                master_key_wrapped,
+                items: HashMap::new(),
+                is_locked: false,
+                sync_revision: 0,
+                vault_key: Some(vault_key),
+            },
+            recovery_kit,
+        ))
     }
 
-    /// Reconstruct a locked vault from encrypted metadata.
     pub fn from_encrypted_metadata(
         id: VaultId,
+        name: String,
         created_at: Timestamp,
         salt: [u8; 32],
         master_key_wrapped: Vec<u8>,
@@ -57,6 +73,7 @@ impl Vault {
     ) -> Self {
         Self {
             id,
+            name,
             created_at,
             salt,
             master_key_wrapped,
@@ -67,15 +84,18 @@ impl Vault {
         }
     }
 
-    /// Unlock the vault with the master password.
-    pub fn unlock(&mut self, password: &str) -> Result<()> {
+    pub fn unlock(&mut self, password: &str, secret_key: &LocalSecretKey) -> Result<()> {
         if !self.is_locked {
             return Err(CoreError::AlreadyUnlocked);
         }
 
         let password = Secret::new(password.to_owned());
-        let master_key =
-            Zeroizing::new(derive_key(&password, &self.salt, &Argon2Params::default())?);
+        let master_key = Zeroizing::new(derive_key(
+            &password,
+            secret_key.as_bytes(),
+            &self.salt,
+            &Argon2Params::default(),
+        )?);
         let vault_key =
             unwrap_vault_key(&master_key, &self.master_key_wrapped).map_err(|error| {
                 if matches!(
@@ -93,7 +113,6 @@ impl Vault {
         Ok(())
     }
 
-    /// Lock the vault, clearing decrypted items and zeroizing the in-memory vault key.
     pub fn lock(&mut self) -> Result<()> {
         if self.is_locked {
             return Err(CoreError::AlreadyLocked);
@@ -108,7 +127,6 @@ impl Vault {
         Ok(())
     }
 
-    /// Return the current vault state.
     pub fn state(&self) -> VaultState {
         if self.is_locked {
             VaultState::Locked
@@ -117,7 +135,6 @@ impl Vault {
         }
     }
 
-    /// Create an item in the unlocked vault and return its assigned identifier.
     pub fn create_item(&mut self, item: Item) -> Result<ItemId> {
         self.ensure_unlocked()?;
 
@@ -128,19 +145,16 @@ impl Vault {
         Ok(id)
     }
 
-    /// Get an item by identifier from the unlocked vault.
     pub fn get_item(&self, id: ItemId) -> Result<&Item> {
         self.ensure_unlocked()?;
         self.items.get(&id).ok_or(CoreError::ItemNotFound)
     }
 
-    /// List all in-memory items from the unlocked vault.
     pub fn list_items(&self) -> Result<Vec<&Item>> {
         self.ensure_unlocked()?;
         Ok(self.items.values().collect())
     }
 
-    /// Update an item by identifier in the unlocked vault.
     pub fn update_item(&mut self, id: ItemId, item: Item) -> Result<()> {
         self.ensure_unlocked()?;
 
@@ -155,7 +169,6 @@ impl Vault {
         Ok(())
     }
 
-    /// Delete an item by identifier from the unlocked vault.
     pub fn delete_item(&mut self, id: ItemId) -> Result<()> {
         self.ensure_unlocked()?;
 
@@ -164,32 +177,41 @@ impl Vault {
         Ok(())
     }
 
-    /// Encrypt a decrypted item with the in-memory vault key.
     pub fn encrypt_item(&self, item: &Item) -> Result<Vec<u8>> {
         self.ensure_unlocked()?;
         let vault_key = self.vault_key.as_ref().ok_or(CoreError::VaultLocked)?;
-        Ok(encrypt_item(item, vault_key)?)
+        let aad = build_item_aad(
+            &self.id.to_string(),
+            &item.id.to_string(),
+            item_type_name(&item.data),
+        );
+        Ok(encrypt_item(item, vault_key, &aad)?)
     }
 
-    /// Decrypt an encrypted item blob with the in-memory vault key.
-    pub fn decrypt_item(&self, ciphertext: &[u8]) -> Result<Item> {
+    pub fn decrypt_item(
+        &self,
+        ciphertext: &[u8],
+        item_id: &ItemId,
+        item_type: &str,
+    ) -> Result<Item> {
         self.ensure_unlocked()?;
         let vault_key = self.vault_key.as_ref().ok_or(CoreError::VaultLocked)?;
-        decrypt_item(ciphertext, vault_key).map_err(CoreError::CryptoError)
+        let aad = build_item_aad(&self.id.to_string(), &item_id.to_string(), item_type);
+        decrypt_item(ciphertext, vault_key, &aad).map_err(CoreError::CryptoError)
     }
 
-    /// Encrypt a serializable vault-scoped payload with the in-memory vault key.
     pub fn encrypt_payload<T: Serialize>(&self, payload: &T) -> Result<Vec<u8>> {
         self.ensure_unlocked()?;
         let vault_key = self.vault_key.as_ref().ok_or(CoreError::VaultLocked)?;
-        Ok(encrypt_item(payload, vault_key)?)
+        let aad = build_payload_aad(&self.id.to_string());
+        Ok(encrypt_item(payload, vault_key, &aad)?)
     }
 
-    /// Decrypt a vault-scoped payload with the in-memory vault key.
     pub fn decrypt_payload<T: DeserializeOwned>(&self, ciphertext: &[u8]) -> Result<T> {
         self.ensure_unlocked()?;
         let vault_key = self.vault_key.as_ref().ok_or(CoreError::VaultLocked)?;
-        decrypt_item(ciphertext, vault_key).map_err(CoreError::CryptoError)
+        let aad = build_payload_aad(&self.id.to_string());
+        decrypt_item(ciphertext, vault_key, &aad).map_err(CoreError::CryptoError)
     }
 
     fn ensure_unlocked(&self) -> Result<()> {
@@ -202,6 +224,21 @@ impl Vault {
 
     fn bump_revision(&mut self) {
         self.sync_revision = self.sync_revision.saturating_add(1);
+    }
+}
+
+fn item_type_name(item_type: &ItemType) -> &str {
+    match item_type {
+        ItemType::Login(_) => "Login",
+        ItemType::APIKey(_) => "APIKey",
+        ItemType::SSHKey(_) => "SSHKey",
+        ItemType::SecureNote(_) => "SecureNote",
+        ItemType::Server(_) => "Server",
+        ItemType::Database(_) => "Database",
+        ItemType::Identity(_) => "Identity",
+        ItemType::SoftwareLicense(_) => "SoftwareLicense",
+        ItemType::RecoveryCodes(_) => "RecoveryCodes",
+        ItemType::Custom(_) => "Custom",
     }
 }
 

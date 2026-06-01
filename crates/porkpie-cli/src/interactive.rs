@@ -37,6 +37,19 @@ pub fn prompt_vault_id() -> Result<String> {
         .interact_text()?)
 }
 
+/// Prompt for a vault name.
+pub fn prompt_vault_name() -> Result<String> {
+    let name = Input::<String>::new()
+        .with_prompt("Vault name")
+        .interact_text()?;
+    if name.trim().is_empty() {
+        return Err(CliError::InvalidArgument(
+            "vault name cannot be empty".to_string(),
+        ));
+    }
+    Ok(name.trim().to_string())
+}
+
 /// Prompt for item data using a requested type name.
 pub fn prompt_item(item_type: &str) -> Result<Item> {
     Ok(Item::new(prompt_item_type(item_type, None)?))

@@ -35,10 +35,24 @@ pub enum Commands {
     Unlock,
     /// Lock the current session.
     Lock,
-    /// List items in the current vault.
-    List,
-    /// Get and print one decrypted item.
-    Get { id: String },
+    /// Item management commands.
+    #[command(subcommand)]
+    Item(ItemCommands),
+    /// Read a single field value from a pie:// URI.
+    Read { uri: String },
+    /// Write a value to a single field via pie:// URI.
+    Write { uri: String, value: String },
+    /// Copy a field value to clipboard via pie:// URI.
+    Copy { uri: String },
+    /// Run a command with secrets injected as environment variables.
+    Run {
+        /// Environment variable mappings in the form NAME=pie://vault/item/field
+        #[arg(long = "env", value_name = "NAME=PIE_URI", num_args = 1..)]
+        env: Vec<String>,
+        /// The command to run
+        #[arg(last = true)]
+        command: Vec<String>,
+    },
     /// Add a new item.
     Add { item_type: String },
     /// Edit an existing item.
@@ -64,6 +78,15 @@ pub enum Commands {
     },
 }
 
+/// Item subcommands.
+#[derive(Debug, Subcommand)]
+pub enum ItemCommands {
+    /// List items in the current vault (redacted).
+    List,
+    /// Get item details (redacted by default).
+    Get { id: String },
+}
+
 /// Run the parsed CLI command.
 pub async fn run(cli: Cli) -> Result<()> {
     let context = commands::CommandContext::new(cli.database_url, cli.session_path);
@@ -72,8 +95,12 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Init => commands::init::run(&context).await,
         Commands::Unlock => commands::unlock::run(&context).await,
         Commands::Lock => commands::lock::run(&context).await,
-        Commands::List => commands::list::run(&context).await,
-        Commands::Get { id } => commands::get::run(&context, &id).await,
+        Commands::Item(ItemCommands::List) => commands::list::run(&context).await,
+        Commands::Item(ItemCommands::Get { id }) => commands::get::run(&context, &id).await,
+        Commands::Read { uri } => commands::read::run(&context, &uri).await,
+        Commands::Write { uri, value } => commands::write::run(&context, &uri, &value).await,
+        Commands::Copy { uri } => commands::copy::run(&context, &uri).await,
+        Commands::Run { env, command } => commands::run_cmd::run(&context, env, command).await,
         Commands::Add { item_type } => commands::add::run(&context, &item_type).await,
         Commands::Edit { id } => commands::edit::run(&context, &id).await,
         Commands::Delete { id } => commands::delete::run(&context, &id).await,

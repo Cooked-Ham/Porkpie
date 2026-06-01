@@ -1,13 +1,23 @@
 mod common;
 
 use common::test_pool;
-use porkpie_core::Vault;
+use porkpie_core::{LocalSecretKey, Vault};
 use porkpie_store::{load_vault, store_vault};
+
+fn test_secret_key() -> LocalSecretKey {
+    LocalSecretKey::from_hex("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+        .unwrap()
+}
 
 #[tokio::test]
 async fn connection_pool_supports_concurrent_reads() {
     let pool = test_pool().await.expect("test database should connect");
-    let vault = Vault::create("correct horse battery staple").expect("vault should be created");
+    let (vault, _) = Vault::create(
+        "TestVault",
+        "correct horse battery staple",
+        &test_secret_key(),
+    )
+    .expect("vault should be created");
     store_vault(&pool, &vault)
         .await
         .expect("vault should store");

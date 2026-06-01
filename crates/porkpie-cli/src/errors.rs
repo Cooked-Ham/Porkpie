@@ -17,6 +17,8 @@ pub enum CliError {
     VaultNotFound(VaultId),
     #[error("Item not found: {0}")]
     ItemNotFound(ItemId),
+    #[error("Item not found: {0}")]
+    ItemNotFoundByName(String),
     #[error("Invalid password")]
     InvalidPassword,
     #[error("No unlocked session. Run `porkpie unlock` first")]
@@ -25,6 +27,12 @@ pub enum CliError {
     SessionExpired,
     #[error("Unsupported item type: {0}")]
     UnsupportedItemType(String),
+    #[error("Invalid pie:// URI: {0}")]
+    InvalidPieUri(String),
+    #[error("Field error: {0}")]
+    FieldError(String),
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Prompt error: {0}")]

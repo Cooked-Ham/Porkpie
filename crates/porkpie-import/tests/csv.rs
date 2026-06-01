@@ -1,10 +1,20 @@
-use porkpie_core::Vault;
+use porkpie_core::{LocalSecretKey, Vault};
 use porkpie_import::import_csv_reader;
 use porkpie_types::ItemType;
 
+fn test_secret_key() -> LocalSecretKey {
+    LocalSecretKey::from_hex("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+        .unwrap()
+}
+
 #[test]
 fn csv_import_creates_encrypted_login_rows() {
-    let mut vault = Vault::create("sixteen-character-password").expect("create vault");
+    let (mut vault, _) = Vault::create(
+        "TestVault",
+        "sixteen-character-password",
+        &test_secret_key(),
+    )
+    .expect("create vault");
     let csv =
         "item_type,title,username,password,notes\nlogin,Email,me@example.com,secret,primary\n";
 
@@ -19,14 +29,23 @@ fn csv_import_creates_encrypted_login_rows() {
         .any(|window| window == b"secret"));
 
     let item = vault
-        .decrypt_item(&result.encrypted_items[0].ciphertext)
+        .decrypt_item(
+            &result.encrypted_items[0].ciphertext,
+            &result.encrypted_items[0].id,
+            &result.encrypted_items[0].item_type,
+        )
         .expect("decrypt imported item");
     assert!(matches!(item.data, ItemType::Login(_)));
 }
 
 #[test]
 fn csv_import_rejects_missing_required_fields() {
-    let mut vault = Vault::create("sixteen-character-password").expect("create vault");
+    let (mut vault, _) = Vault::create(
+        "TestVault",
+        "sixteen-character-password",
+        &test_secret_key(),
+    )
+    .expect("create vault");
     let csv = "item_type,title,username,password,notes\nlogin,Email,me@example.com,,primary\n";
 
     let error = import_csv_reader(csv.as_bytes(), &mut vault).expect_err("row should fail");

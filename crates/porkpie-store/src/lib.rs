@@ -13,7 +13,8 @@ pub mod vault_store;
 pub use db::{connect, connect_database};
 pub use errors::{Result, StoreError};
 pub use item_store::{
-    delete_item, load_item, load_item_record, load_items, store_item, update_item,
+    delete_item, load_item, load_item_record, load_items, load_items_with_type, store_item,
+    update_item,
 };
 pub use models::{EncryptedItemData, EncryptedVaultData, SyncState};
-pub use vault_store::{delete_vault, load_vault, store_vault};
+pub use vault_store::{delete_vault, load_vault, load_vault_by_name, store_vault};

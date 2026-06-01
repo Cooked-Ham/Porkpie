@@ -7,5 +7,7 @@ pub mod components;
 pub mod pages;
 pub mod state;
 pub mod utils;
+pub mod vault_store;
 
 pub use app::App;
+pub use vault_store::{DecryptedItem, ItemSummary, VaultBackend, VaultSummary};

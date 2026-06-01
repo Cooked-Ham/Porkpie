@@ -1,6 +1,7 @@
 use crate::errors::{ApiError, Result};
 use porkpie_sync::{ConflictItem, EncryptedSyncItem, MergeStrategy};
 use porkpie_types::VaultId;
+use sha2::{Digest, Sha256};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     Executor, Row, SqlitePool,
@@ -29,27 +30,36 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
-/// Insert or refresh a configured API key.
+/// Hash an API key using SHA-256 for storage at rest.
+pub fn hash_api_key(api_key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(api_key.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Insert or refresh a hashed API key.
 pub async fn upsert_api_key(pool: &SqlitePool, api_key: &str) -> Result<()> {
+    let key_hash = hash_api_key(api_key);
     sqlx::query(
         r#"
-        INSERT INTO api_keys (api_key, active, created_at)
+        INSERT INTO api_keys (api_key_hash, active, created_at)
         VALUES (?, 1, strftime('%s', 'now'))
-        ON CONFLICT(api_key) DO UPDATE SET active = 1
+        ON CONFLICT(api_key_hash) DO UPDATE SET active = 1
         "#,
     )
-    .bind(api_key)
+    .bind(&key_hash)
     .execute(pool)
     .await?;
 
     Ok(())
 }
 
-/// Return true when the API key is active.
+/// Return true when the API key hash matches an active entry.
 pub async fn api_key_exists(pool: &SqlitePool, api_key: &str) -> Result<bool> {
+    let key_hash = hash_api_key(api_key);
     let count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM api_keys WHERE api_key = ? AND active = 1")
-            .bind(api_key)
+        sqlx::query_as("SELECT COUNT(*) FROM api_keys WHERE api_key_hash = ? AND active = 1")
+            .bind(&key_hash)
             .fetch_one(pool)
             .await?;
 
@@ -314,7 +324,7 @@ const MIGRATIONS: &[&str] = &[
     r#"
     CREATE TABLE IF NOT EXISTS api_keys (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        api_key TEXT NOT NULL UNIQUE,
+        api_key_hash TEXT NOT NULL UNIQUE,
         active INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL
     );
@@ -328,6 +338,6 @@ const MIGRATIONS: &[&str] = &[
     );
     "#,
     "CREATE INDEX IF NOT EXISTS idx_items_vault_revision ON items(vault_id, sync_revision);",
-    "CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(api_key, active);",
+    "CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(api_key_hash, active);",
     "CREATE INDEX IF NOT EXISTS idx_audit_vault ON audit_log(vault_id, created_at);",
 ];

@@ -1,5 +1,5 @@
 use clap::{CommandFactory, Parser};
-use porkpie_cli::{Cli, Commands};
+use porkpie_cli::{Cli, Commands, ItemCommands};
 use porkpie_types::VaultId;
 
 #[test]
@@ -43,6 +43,7 @@ fn parses_global_options_and_subcommands() {
         "sqlite::memory:",
         "--session-path",
         "session.json",
+        "item",
         "get",
         "550e8400-e29b-41d4-a716-446655440000",
     ]);
@@ -52,7 +53,10 @@ fn parses_global_options_and_subcommands() {
         cli.session_path.as_deref(),
         Some(std::path::Path::new("session.json"))
     );
-    assert!(matches!(cli.command, Commands::Get { .. }));
+    assert!(matches!(
+        cli.command,
+        Commands::Item(ItemCommands::Get { .. })
+    ));
 }
 
 #[test]

@@ -1,14 +1,25 @@
 use porkpie_types::{ItemId, ItemType, Timestamp};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use zeroize::Zeroize;
 
-/// A decrypted vault item held only in unlocked in-memory vault state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Item {
     pub id: ItemId,
     pub data: ItemType,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
+}
+
+impl fmt::Debug for Item {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Item")
+            .field("id", &self.id)
+            .field("data", &"[redacted]")
+            .field("created_at", &self.created_at)
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
 }
 
 impl Item {

@@ -8,7 +8,7 @@ services:
     environment:
       DATABASE_URL: sqlite:/app/data/porkpie.db
       API_PORT: 8000
-      API_KEY: dev-key-change-in-production
+      API_KEY: ${API_KEY:?Set API_KEY in .env or environment}
     volumes:
       - porkpie-data:/app/data
 

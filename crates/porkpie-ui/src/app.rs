@@ -2,9 +2,9 @@ use crate::pages::{
     ImportExportPage, ItemDetailPage, ItemListPage, OnboardingPage, PasswordGeneratorPage,
     SettingsPage, UnlockPage,
 };
-use crate::state::ItemSummary;
+use crate::state::{AppState, Screen};
+use crate::vault_store::VaultBackend;
 use dioxus::prelude::*;
-use porkpie_types::{ItemId, Timestamp};
 
 const APP_CSS: &str = r#"
 :root {
@@ -47,6 +47,7 @@ h2 { font-size: 1rem; margin-bottom: 6px; }
 .textarea { min-height: 96px; resize: vertical; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .btn { cursor: pointer; background: var(--surface-2); color: var(--text); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .btn-secondary { background: var(--surface-2); }
 .btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); }
@@ -61,7 +62,12 @@ h2 { font-size: 1rem; margin-bottom: 6px; }
 .generated { display: block; overflow-wrap: anywhere; font: 700 1rem ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
 .backup-row { display: flex; justify-content: space-between; gap: 16px; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
 .toast { border-left: 4px solid var(--accent); padding: 12px; background: var(--surface-2); color: var(--muted); }
-.modal-backdrop { display: none; }
+.notice { border-left: 4px solid var(--muted); padding: 12px; background: var(--surface-2); color: var(--muted); }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; max-width: 540px; width: 100%; display: grid; gap: 16px; }
+.empty-state { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; }
+.field-row { display: grid; grid-template-columns: 140px 1fr auto; gap: 12px; align-items: center; }
+.field-row .field-label { color: var(--muted); font-weight: 700; }
 @media (prefers-color-scheme: light) {
   :root { --bg: #f7f8fa; --surface: #ffffff; --surface-2: #eef1f4; --text: #171a1f; --muted: #526170; --line: #d9e0e7; --accent: #067a63; --accent-ink: #ffffff; }
   .sidebar { background: #ffffff; }
@@ -72,13 +78,41 @@ h2 { font-size: 1rem; margin-bottom: 6px; }
   .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace { padding: 18px; }
   .two-col, .toggle-grid { grid-template-columns: 1fr; }
-  .split, .backup-row { align-items: stretch; flex-direction: column; }
+  .split, .backup-row, .field-row { align-items: stretch; flex-direction: column; }
 }
 "#;
 
+/// Database URL to use for the local vault store. Set via the
+/// `PORKPIE_DATABASE_URL` environment variable. On WASM this is ignored.
+fn database_url_from_env() -> Option<String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::env::var("PORKPIE_DATABASE_URL").ok()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = std::env::var("PORKPIE_DATABASE_URL");
+        None
+    }
+}
+
 /// Root Dioxus component shared by desktop and web shells.
 pub fn App(cx: Scope) -> Element {
-    let preview_items = preview_items();
+    let backend = use_ref(cx, || VaultBackend::Unavailable);
+    let state = use_ref(cx, AppState::default);
+
+    // The initial mount fires a future that loads vault summaries. On
+    // non-WASM this is real. On WASM it is a no-op.
+    let backend_for_init = backend.clone();
+    let state_for_init = state.clone();
+    use_future(cx, (), |_| {
+        let backend = backend_for_init.clone();
+        let state = state_for_init.clone();
+        async move { initial_load(backend, state).await }
+    });
+
+    let state_for_render = state.clone();
+    let backend_for_render = backend.clone();
 
     cx.render(rsx! {
         style { "{APP_CSS}" }
@@ -95,34 +129,55 @@ pub fn App(cx: Scope) -> Element {
                 }
             }
             main { class: "workspace",
-                OnboardingPage {}
-                UnlockPage {}
-                ItemListPage { items: preview_items }
-                ItemDetailPage {}
-                PasswordGeneratorPage {}
-                ImportExportPage {}
-                SettingsPage {}
+                OnboardingPage { state: state_for_render.clone(), backend: backend_for_render.clone() }
+                UnlockPage { state: state_for_render.clone(), backend: backend_for_render.clone() }
+                ItemListPage { state: state_for_render.clone() }
+                ItemDetailPage { state: state_for_render.clone() }
+                PasswordGeneratorPage { state: state_for_render.clone() }
+                ImportExportPage { state: state_for_render.clone(), backend: backend_for_render.clone() }
+                SettingsPage { state: state_for_render.clone() }
             }
         }
     })
 }
 
-fn preview_items() -> Vec<ItemSummary> {
-    let now = Timestamp::now();
-    vec![
-        ItemSummary {
-            id: ItemId::new(),
-            item_type: "Login".to_string(),
-            title: "Example login".to_string(),
-            created_at: now,
-            updated_at: now,
-        },
-        ItemSummary {
-            id: ItemId::new(),
-            item_type: "Secure note".to_string(),
-            title: "Recovery notes".to_string(),
-            created_at: now,
-            updated_at: now,
-        },
-    ]
+async fn initial_load(backend_ref: UseRef<VaultBackend>, state_ref: UseRef<AppState>) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let url = database_url_from_env().unwrap_or_else(|| "sqlite:porkpie.db".to_string());
+        let backend = match VaultBackend::connect_sqlite(&url).await {
+            Ok(backend) => backend,
+            Err(error) => {
+                state_ref.with_mut(|state| {
+                    state.error = Some(format!("Database error: {error}"));
+                    state.screen = Screen::Onboarding;
+                });
+                return;
+            }
+        };
+        backend_ref.set(backend.clone());
+        match backend.list_vault_summaries().await {
+            Ok(summaries) => {
+                state_ref.with_mut(|state| {
+                    state.vaults = summaries;
+                    state.screen = if state.vaults.is_empty() {
+                        Screen::Onboarding
+                    } else {
+                        Screen::Unlock
+                    };
+                });
+            }
+            Err(error) => {
+                state_ref.with_mut(|state| {
+                    state.error = Some(format!("Failed to list vaults: {error}"));
+                    state.screen = Screen::Onboarding;
+                });
+            }
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = backend_ref;
+        let _ = state_ref;
+    }
 }

@@ -11,3 +11,5 @@ pub use item::Item;
 pub use password_gen::{generate_password, PasswordOptions};
 pub use state::VaultState;
 pub use vault::Vault;
+
+pub use porkpie_types::{LocalSecretKey, RecoveryKit};

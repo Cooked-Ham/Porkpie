@@ -11,7 +11,7 @@ Global Agent Instructions
 
 You are working on Porkpie, a Rust-first, local-first, zero-knowledge, self-hostable password manager for developers and homelab users.
 
-Repository: https://gitlab.com/cookedham/porkpie
+Repository: https://github.com/Cooked-Ham/Porkpie
 
 Core product identity:
 

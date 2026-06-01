@@ -1,17 +1,18 @@
 use crate::errors::{CliError, Result};
-use porkpie_types::{Timestamp, VaultId};
+use porkpie_types::{LocalSecretKey, Timestamp, VaultId};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 const SESSION_TIMEOUT_MILLIS: i64 = 30 * 60 * 1000;
 const DEFAULT_SESSION_PATH: &str = ".porkpie-session.json";
 
-/// Persisted session metadata. This file never stores passwords or vault keys.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionState {
     pub current_vault_id: Option<VaultId>,
     pub unlocked: bool,
     pub last_activity: Timestamp,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_key_hex: Option<String>,
 }
 
 impl Default for SessionState {
@@ -20,27 +21,35 @@ impl Default for SessionState {
             current_vault_id: None,
             unlocked: false,
             last_activity: Timestamp::now(),
+            secret_key_hex: None,
         }
     }
 }
 
 impl SessionState {
-    /// Create a new unlocked session for a vault.
     pub fn unlocked(vault_id: VaultId) -> Self {
         Self {
             current_vault_id: Some(vault_id),
             unlocked: true,
             last_activity: Timestamp::now(),
+            secret_key_hex: None,
         }
     }
 
-    /// Mark the session locked without clearing the selected vault.
+    pub fn unlocked_with_key(vault_id: VaultId, secret_key: &LocalSecretKey) -> Self {
+        Self {
+            current_vault_id: Some(vault_id),
+            unlocked: true,
+            last_activity: Timestamp::now(),
+            secret_key_hex: Some(secret_key.to_hex()),
+        }
+    }
+
     pub fn lock(&mut self) {
         self.unlocked = false;
         self.last_activity = Timestamp::now();
     }
 
-    /// Return the active vault id if the session is unlocked and not expired.
     pub fn require_unlocked_vault(&self) -> Result<VaultId> {
         if !self.unlocked {
             return Err(CliError::NoUnlockedSession);
@@ -51,6 +60,14 @@ impl SessionState {
         }
 
         self.current_vault_id.ok_or(CliError::NoUnlockedSession)
+    }
+
+    pub fn require_secret_key(&self) -> Result<LocalSecretKey> {
+        let hex = self
+            .secret_key_hex
+            .as_ref()
+            .ok_or(CliError::NoUnlockedSession)?;
+        LocalSecretKey::from_hex(hex).map_err(|_| CliError::NoUnlockedSession)
     }
 }
 

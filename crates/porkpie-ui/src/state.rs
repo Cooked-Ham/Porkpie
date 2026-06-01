@@ -1,5 +1,7 @@
-use porkpie_core::{PasswordOptions, Vault};
-use porkpie_types::{ItemId, Timestamp, VaultId};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::vault_store::UnlockedVaultHandle;
+pub use crate::vault_store::{DecryptedItem, ItemSummary, VaultSummary};
+use porkpie_types::{ItemId, Timestamp};
 use serde::{Deserialize, Serialize};
 
 /// Top-level page shown by the UI.
@@ -8,6 +10,7 @@ pub enum Screen {
     Onboarding,
     Unlock,
     List,
+    NewItem,
     Detail(ItemId),
     PasswordGenerator,
     ImportExport,
@@ -37,21 +40,15 @@ impl Default for SettingsState {
     }
 }
 
-/// Minimal item summary rendered by the list page.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ItemSummary {
-    pub id: ItemId,
-    pub item_type: String,
-    pub title: String,
-    pub created_at: Timestamp,
-    pub updated_at: Timestamp,
-}
-
 /// Password generator form state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PasswordGeneratorState {
     pub length: usize,
-    pub options: PasswordOptions,
+    pub uppercase: bool,
+    pub lowercase: bool,
+    pub numbers: bool,
+    pub symbols: bool,
+    pub exclude_ambiguous: bool,
     pub generated_password: String,
 }
 
@@ -59,39 +56,69 @@ impl Default for PasswordGeneratorState {
     fn default() -> Self {
         Self {
             length: 24,
-            options: PasswordOptions::default(),
+            uppercase: true,
+            lowercase: true,
+            numbers: true,
+            symbols: true,
+            exclude_ambiguous: false,
             generated_password: String::new(),
         }
     }
 }
 
+impl PasswordGeneratorState {
+    pub fn to_options(&self) -> porkpie_core::PasswordOptions {
+        porkpie_core::PasswordOptions {
+            uppercase: self.uppercase,
+            lowercase: self.lowercase,
+            numbers: self.numbers,
+            symbols: self.symbols,
+            exclude_ambiguous: self.exclude_ambiguous,
+            custom_chars: None,
+        }
+    }
+}
+
 /// Application state owned by the root component.
+///
+/// Holds only metadata and non-secret data. Decrypted items are held in
+/// short-lived form via [`AppState::current_item`] and the on-disk vault
+/// store. No decrypted secret material is persisted to localStorage,
+/// sessionStorage, or any client-side cache.
 pub struct AppState {
     pub screen: Screen,
-    pub current_vault_id: Option<VaultId>,
-    pub vault: Option<Vault>,
-    pub unlocked: bool,
+    pub vaults: Vec<VaultSummary>,
+    pub current_vault: Option<VaultSummary>,
     pub items: Vec<ItemSummary>,
+    pub current_item: Option<DecryptedItem>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub unlocked_handle: Option<UnlockedVaultHandle>,
     pub search_query: String,
     pub last_activity: Timestamp,
     pub settings: SettingsState,
     pub password_generator: PasswordGeneratorState,
     pub toast: Option<String>,
+    pub error: Option<String>,
+    pub status: Option<String>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
             screen: Screen::Onboarding,
-            current_vault_id: None,
-            vault: None,
-            unlocked: false,
+            vaults: Vec::new(),
+            current_vault: None,
             items: Vec::new(),
+            current_item: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            unlocked_handle: None,
             search_query: String::new(),
             last_activity: Timestamp::now(),
             settings: SettingsState::default(),
             password_generator: PasswordGeneratorState::default(),
             toast: None,
+            error: None,
+            status: None,
         }
     }
 }
@@ -99,16 +126,21 @@ impl Default for AppState {
 impl AppState {
     /// Mark the state as locked and purge in-memory decrypted vault state.
     pub fn lock(&mut self) {
-        self.vault = None;
-        self.unlocked = false;
-        self.screen = Screen::Unlock;
+        self.current_vault = None;
         self.items.clear();
+        self.current_item = None;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // Drop the unlocked handle so the in-memory vault key is zeroized.
+            self.unlocked_handle = None;
+        }
+        self.screen = Screen::Unlock;
         self.last_activity = Timestamp::now();
     }
 
     /// Returns true when the configured inactivity timeout has elapsed.
     pub fn is_timed_out(&self, now: Timestamp) -> bool {
-        if !self.unlocked {
+        if self.current_vault.is_none() {
             return false;
         }
         let elapsed = now.to_millis() - self.last_activity.to_millis();

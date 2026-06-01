@@ -1,7 +1,7 @@
 use crate::errors::{ImportError, Result};
 use porkpie_core::Vault;
 use porkpie_store::{EncryptedItemData, EncryptedVaultData};
-use porkpie_types::Timestamp;
+use porkpie_types::{LocalSecretKey, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::File;
@@ -24,8 +24,9 @@ struct BackupPayload {
 }
 
 /// Duplicate handling behavior when importing a backup into an existing vault.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BackupImportMode {
+    #[default]
     SkipDuplicates,
     OverwriteDuplicates,
 }
@@ -73,24 +74,25 @@ pub fn read_backup_file(path: &Path) -> Result<BackupFile> {
 pub fn import_backup_file(
     path: &Path,
     password: &str,
+    secret_key: &LocalSecretKey,
     existing_item_ids: &HashSet<String>,
     mode: BackupImportMode,
 ) -> Result<BackupImportResult> {
     let backup = read_backup_file(path)?;
-    import_backup(backup, password, existing_item_ids, mode)
+    import_backup(backup, password, secret_key, existing_item_ids, mode)
 }
 
-/// Validate a backup using the master password and merge duplicate item ids.
 pub fn import_backup(
     backup: BackupFile,
     password: &str,
+    secret_key: &LocalSecretKey,
     existing_item_ids: &HashSet<String>,
     mode: BackupImportMode,
 ) -> Result<BackupImportResult> {
     validate_backup(&backup)?;
 
     let mut vault = backup.vault.clone().into_locked_vault();
-    vault.unlock(password)?;
+    vault.unlock(password, secret_key)?;
     let payload: BackupPayload = vault.decrypt_payload(&backup.payload)?;
 
     let mut seen = HashSet::new();
@@ -105,7 +107,7 @@ pub fn import_backup(
             continue;
         }
 
-        let decrypted = vault.decrypt_item(&item.ciphertext)?;
+        let decrypted = vault.decrypt_item(&item.ciphertext, &item.id, &item.item_type)?;
         if decrypted.id != item.id {
             return Err(ImportError::InvalidRow {
                 row: items.len().saturating_add(1),

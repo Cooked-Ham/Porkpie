@@ -1,17 +1,27 @@
 mod common;
 
 use common::test_pool;
-use porkpie_core::Vault;
+use porkpie_core::{LocalSecretKey, Vault};
 use porkpie_store::{
     delete_item, delete_vault, load_item, load_item_record, load_items, load_vault, store_item,
     store_vault, update_item, EncryptedItemData, StoreError,
 };
 use porkpie_types::{ItemId, Timestamp};
 
+fn test_secret_key() -> LocalSecretKey {
+    LocalSecretKey::from_hex("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+        .unwrap()
+}
+
 #[tokio::test]
 async fn store_and_load_vault_works() {
     let pool = test_pool().await.expect("test database should connect");
-    let vault = Vault::create("correct horse battery staple").expect("vault should be created");
+    let (vault, _) = Vault::create(
+        "TestVault",
+        "correct horse battery staple",
+        &test_secret_key(),
+    )
+    .expect("vault should be created");
 
     store_vault(&pool, &vault)
         .await
@@ -28,14 +38,19 @@ async fn store_and_load_vault_works() {
 
     let mut locked_vault = loaded.into_locked_vault();
     locked_vault
-        .unlock("correct horse battery staple")
+        .unlock("correct horse battery staple", &test_secret_key())
         .expect("loaded metadata should unlock");
 }
 
 #[tokio::test]
 async fn store_load_update_delete_item_works() {
     let pool = test_pool().await.expect("test database should connect");
-    let vault = Vault::create("correct horse battery staple").expect("vault should be created");
+    let (vault, _) = Vault::create(
+        "TestVault",
+        "correct horse battery staple",
+        &test_secret_key(),
+    )
+    .expect("vault should be created");
     store_vault(&pool, &vault)
         .await
         .expect("vault should store");
@@ -82,7 +97,12 @@ async fn store_load_update_delete_item_works() {
 #[tokio::test]
 async fn delete_vault_cascades_items() {
     let pool = test_pool().await.expect("test database should connect");
-    let vault = Vault::create("correct horse battery staple").expect("vault should be created");
+    let (vault, _) = Vault::create(
+        "TestVault",
+        "correct horse battery staple",
+        &test_secret_key(),
+    )
+    .expect("vault should be created");
     store_vault(&pool, &vault)
         .await
         .expect("vault should store");

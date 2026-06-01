@@ -4,23 +4,31 @@ use porkpie_ui::state::{AppState, Screen};
 #[test]
 fn app_state_locks_and_returns_to_unlock_screen() {
     let mut state = AppState {
-        unlocked: true,
         screen: Screen::List,
+        current_vault: Some(porkpie_ui::VaultSummary {
+            id: porkpie_types::VaultId::new(),
+            name: "Personal".to_string(),
+            created_at: Timestamp(0),
+        }),
+        items: vec![],
         ..AppState::default()
     };
 
     state.lock();
 
-    assert!(!state.unlocked);
+    assert!(state.current_vault.is_none());
     assert_eq!(state.screen, Screen::Unlock);
-    assert!(state.vault.is_none());
     assert!(state.items.is_empty());
 }
 
 #[test]
 fn timeout_only_applies_to_unlocked_sessions() {
     let mut state = AppState {
-        unlocked: true,
+        current_vault: Some(porkpie_ui::VaultSummary {
+            id: porkpie_types::VaultId::new(),
+            name: "Personal".to_string(),
+            created_at: Timestamp(0),
+        }),
         last_activity: Timestamp(0),
         ..AppState::default()
     };
@@ -28,7 +36,7 @@ fn timeout_only_applies_to_unlocked_sessions() {
     assert!(!state.is_timed_out(Timestamp(30 * 60 * 1000)));
     assert!(state.is_timed_out(Timestamp(31 * 60 * 1000)));
 
-    state.unlocked = false;
+    state.current_vault = None;
     assert!(!state.is_timed_out(Timestamp(31 * 60 * 1000)));
 }
 
@@ -39,6 +47,7 @@ fn navigation_state_can_target_each_screen() {
         Screen::Onboarding,
         Screen::Unlock,
         Screen::List,
+        Screen::NewItem,
         Screen::Detail(detail_id),
         Screen::PasswordGenerator,
         Screen::ImportExport,
