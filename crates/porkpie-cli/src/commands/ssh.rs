@@ -198,7 +198,11 @@ pub async fn run_agent_with_unlocked_vault(vault: &porkpie_core::Vault) -> Resul
 
     #[cfg(windows)]
     {
-        let pipe_name = porkpie_agent::windows_pipe::DEFAULT_PIPE_NAME;
+        let pipe_name = if let Ok(name) = std::env::var("PORKPIE_SSH_AGENT_SOCK") {
+            name
+        } else {
+            porkpie_agent::windows_pipe::DEFAULT_PIPE_NAME.to_string()
+        };
 
         println!("Porkpie SSH agent will bind the named pipe:");
         println!("  {pipe_name}");
@@ -213,7 +217,7 @@ pub async fn run_agent_with_unlocked_vault(vault: &porkpie_core::Vault) -> Resul
         println!("Press Ctrl+C to stop the agent.");
 
         let agent = std::sync::Arc::new(std::sync::Mutex::new(agent));
-        if let Err(e) = porkpie_agent::run_windows_named_pipe(pipe_name, agent).await {
+        if let Err(e) = porkpie_agent::run_windows_named_pipe(&pipe_name, agent).await {
             return Err(CliError::InvalidArgument(format!("SSH agent failed: {e}")));
         }
     }
