@@ -80,7 +80,7 @@ async fn bidirectional_sync_with_conflict_preservation() {
         .await
         .expect("connect database");
     db::run_migrations(&pool).await.expect("run migrations");
-    db::upsert_api_key(&pool, API_KEY)
+    db::upsert_api_key(&pool, API_KEY, "test")
         .await
         .expect("seed api key");
     let vault_id_str = VaultId::new().to_string();

@@ -179,7 +179,7 @@ async fn sync_routes_reject_revoked_api_key() {
         .await
         .expect("connect database");
     db::run_migrations(&pool).await.expect("run migrations");
-    db::upsert_api_key(&pool, API_KEY)
+    db::upsert_api_key(&pool, API_KEY, "test")
         .await
         .expect("seed api key");
     db::revoke_api_key(&pool, API_KEY)
@@ -424,7 +424,7 @@ async fn test_app() -> axum::Router {
         .await
         .expect("connect database");
     db::run_migrations(&pool).await.expect("run migrations");
-    db::upsert_api_key(&pool, API_KEY)
+    db::upsert_api_key(&pool, API_KEY, "test")
         .await
         .expect("seed api key");
     build_router(AppState {
@@ -438,7 +438,7 @@ async fn seeded_app() -> (axum::Router, String) {
         .await
         .expect("connect database");
     db::run_migrations(&pool).await.expect("run migrations");
-    db::upsert_api_key(&pool, API_KEY)
+    db::upsert_api_key(&pool, API_KEY, "test")
         .await
         .expect("seed api key");
     let vault_id = VaultId::new().to_string();
@@ -500,7 +500,7 @@ async fn same_item_id_in_two_vaults_does_not_collide() {
         .await
         .expect("connect database");
     db::run_migrations(&pool).await.expect("run migrations");
-    db::upsert_api_key(&pool, API_KEY)
+    db::upsert_api_key(&pool, API_KEY, "test")
         .await
         .expect("seed api key");
 

@@ -12,7 +12,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     migrate_items_to_composite_pk(pool).await?;
-
+    migrate_vaults_kdf_params(pool).await?;
     Ok(())
 }
 
@@ -31,6 +31,9 @@ const MIGRATIONS: &[&str] = &[
         salt BLOB NOT NULL,
         master_key_wrapped BLOB NOT NULL,
         sync_revision INTEGER NOT NULL DEFAULT 0,
+        kdf_time_cost INTEGER NOT NULL DEFAULT 2,
+        kdf_mem_cost INTEGER NOT NULL DEFAULT 19456,
+        kdf_parallelism INTEGER NOT NULL DEFAULT 1,
         created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     "#,
@@ -99,6 +102,34 @@ async fn migrate_items_to_composite_pk(pool: &SqlitePool) -> Result<()> {
             )
             .await
             .map_err(map_sqlx_error)?;
+        }
+    }
+    Ok(())
+}
+
+async fn migrate_vaults_kdf_params(pool: &SqlitePool) -> Result<()> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'vaults'")
+            .fetch_optional(pool)
+            .await
+            .map_err(map_sqlx_error)?;
+
+    if let Some((sql,)) = row {
+        if !sql.contains("kdf_time_cost") {
+            sqlx::query("ALTER TABLE vaults ADD COLUMN kdf_time_cost INTEGER NOT NULL DEFAULT 2")
+                .execute(pool)
+                .await
+                .map_err(map_sqlx_error)?;
+            sqlx::query(
+                "ALTER TABLE vaults ADD COLUMN kdf_mem_cost INTEGER NOT NULL DEFAULT 19456",
+            )
+            .execute(pool)
+            .await
+            .map_err(map_sqlx_error)?;
+            sqlx::query("ALTER TABLE vaults ADD COLUMN kdf_parallelism INTEGER NOT NULL DEFAULT 1")
+                .execute(pool)
+                .await
+                .map_err(map_sqlx_error)?;
         }
     }
     Ok(())

@@ -29,6 +29,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         pool.execute(*statement).await?;
     }
     migrate_items_to_composite_pk(pool).await?;
+    migrate_api_keys_metadata(pool).await?;
     Ok(())
 }
 
@@ -77,20 +78,27 @@ pub fn hash_api_key(api_key: &str) -> String {
 }
 
 /// Insert or refresh a hashed API key.
-pub async fn upsert_api_key(pool: &SqlitePool, api_key: &str) -> Result<()> {
+/// Returns the key ID and hash.
+pub async fn upsert_api_key(
+    pool: &SqlitePool,
+    api_key: &str,
+    label: &str,
+) -> Result<(i64, String)> {
     let key_hash = hash_api_key(api_key);
-    sqlx::query(
+    let id: (i64,) = sqlx::query_as(
         r#"
-        INSERT INTO api_keys (api_key_hash, active, created_at)
-        VALUES (?, 1, strftime('%s', 'now'))
-        ON CONFLICT(api_key_hash) DO UPDATE SET active = 1
+        INSERT INTO api_keys (api_key_hash, label, active, created_at)
+        VALUES (?, ?, 1, strftime('%s', 'now'))
+        ON CONFLICT(api_key_hash) DO UPDATE SET active = 1, revoked_at = NULL
+        RETURNING id
         "#,
     )
     .bind(&key_hash)
-    .execute(pool)
+    .bind(label)
+    .fetch_one(pool)
     .await?;
 
-    Ok(())
+    Ok((id.0, key_hash))
 }
 
 /// Return true when the API key hash matches an active entry.
@@ -134,13 +142,54 @@ pub async fn revoke_api_key(pool: &SqlitePool, api_key: &str) -> Result<()> {
 pub async fn revoke_api_key_by_hash(pool: &SqlitePool, key_hash: &str) -> Result<()> {
     sqlx::query(
         r#"
-        UPDATE api_keys SET active = 0 WHERE api_key_hash = ?
+        UPDATE api_keys SET active = 0, revoked_at = strftime('%s', 'now') WHERE api_key_hash = ?
         "#,
     )
     .bind(key_hash)
     .execute(pool)
     .await?;
 
+    Ok(())
+}
+
+/// Deactivate an API key by its ID.
+/// Returns the hash of the revoked key.
+pub async fn revoke_api_key_by_id(pool: &SqlitePool, key_id: i64) -> Result<String> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT api_key_hash FROM api_keys WHERE id = ? AND active = 1")
+            .bind(key_id)
+            .fetch_optional(pool)
+            .await?;
+
+    let key_hash = row.ok_or(ApiError::NotFound)?;
+
+    sqlx::query(
+        r#"
+        UPDATE api_keys SET active = 0, revoked_at = strftime('%s', 'now') WHERE id = ?
+        "#,
+    )
+    .bind(key_id)
+    .execute(pool)
+    .await?;
+
+    Ok(key_hash.0)
+}
+
+/// Count active API keys.
+pub async fn count_active_api_keys(pool: &SqlitePool) -> Result<i64> {
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_keys WHERE active = 1")
+        .fetch_one(pool)
+        .await?;
+    Ok(count.0)
+}
+
+/// Update last_used_at for an API key.
+pub async fn touch_api_key(pool: &SqlitePool, api_key: &str) -> Result<()> {
+    let key_hash = hash_api_key(api_key);
+    sqlx::query("UPDATE api_keys SET last_used_at = strftime('%s', 'now') WHERE api_key_hash = ?")
+        .bind(&key_hash)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -500,8 +549,11 @@ const MIGRATIONS: &[&str] = &[
     CREATE TABLE IF NOT EXISTS api_keys (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         api_key_hash TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL DEFAULT '',
         active INTEGER NOT NULL DEFAULT 1,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        revoked_at INTEGER,
+        last_used_at INTEGER
     );
     "#,
     r#"
@@ -516,3 +568,25 @@ const MIGRATIONS: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(api_key_hash, active);",
     "CREATE INDEX IF NOT EXISTS idx_audit_vault ON audit_log(vault_id, created_at);",
 ];
+
+async fn migrate_api_keys_metadata(pool: &SqlitePool) -> Result<()> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'api_keys'")
+            .fetch_optional(pool)
+            .await?;
+
+    if let Some((sql,)) = row {
+        if !sql.contains("label") {
+            sqlx::query("ALTER TABLE api_keys ADD COLUMN label TEXT NOT NULL DEFAULT ''")
+                .execute(pool)
+                .await?;
+            sqlx::query("ALTER TABLE api_keys ADD COLUMN revoked_at INTEGER")
+                .execute(pool)
+                .await?;
+            sqlx::query("ALTER TABLE api_keys ADD COLUMN last_used_at INTEGER")
+                .execute(pool)
+                .await?;
+        }
+    }
+    Ok(())
+}

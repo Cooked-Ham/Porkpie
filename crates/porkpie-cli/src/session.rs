@@ -56,18 +56,6 @@ impl SessionState {
         }
     }
 
-    pub fn unlocked_with_key(vault_id: VaultId, secret_key: &LocalSecretKey) -> Self {
-        let encrypted = encrypt_secret_key(secret_key, &vault_id);
-        Self {
-            current_vault_id: Some(vault_id),
-            unlocked: true,
-            last_activity: Timestamp::now(),
-            secret_key_hex: None,
-            secret_key_encrypted: encrypted,
-            migrated: None,
-        }
-    }
-
     pub fn lock(&mut self) {
         self.unlocked = false;
         self.last_activity = Timestamp::now();
@@ -121,6 +109,23 @@ impl SessionState {
     /// Migrate a legacy session secret to the OS keychain and clear the
     /// legacy fields from the session file.
     pub fn migrate_legacy_secret(&mut self) -> Result<()> {
+        let store = match default_secret_store() {
+            Some(s) => s,
+            None => {
+                #[cfg(debug_assertions)]
+                eprintln!("[porkpie] no keychain available; skipping legacy migration");
+                return Ok(());
+            }
+        };
+        self.migrate_legacy_secret_with_store(&*store)
+    }
+
+    /// Migrate a legacy session secret using a provided store.
+    /// Testable with FakeKeychain.
+    pub fn migrate_legacy_secret_with_store(
+        &mut self,
+        store: &dyn crate::secret_store::SecretStore,
+    ) -> Result<()> {
         let vault_id = match self.current_vault_id {
             Some(id) => id,
             None => return Ok(()),
@@ -129,8 +134,6 @@ impl SessionState {
         if self.migrated == Some(true) {
             return Ok(());
         }
-
-        let store = default_secret_store();
 
         // Try encrypted first, then plaintext.
         let key = if let Some(encrypted) = &self.secret_key_encrypted {
@@ -141,7 +144,7 @@ impl SessionState {
             None
         };
 
-        if let (Some(store), Some(key)) = (store, key) {
+        if let Some(key) = key {
             if let Err(e) = store.store_local_secret_key(&vault_id, &key) {
                 #[cfg(debug_assertions)]
                 eprintln!("[porkpie] keychain migration failed: {e}; keeping legacy field");
@@ -189,11 +192,11 @@ pub fn save(path: &Path, session: &SessionState) -> Result<()> {
     Ok(())
 }
 
-/// Derive a 32-byte session encryption key from the vault ID.
+/// LEGACY: Derive a 32-byte session encryption key from the vault ID.
 ///
 /// This is obfuscation-level protection: the vault ID is stored in the
 /// session file, so an attacker with the file can derive the same key.
-/// It raises the bar from "read plaintext" to "reverse the key derivation".
+/// Never called by new code. Kept only for reading legacy session files.
 fn derive_session_key(vault_id: &VaultId) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
@@ -205,14 +208,17 @@ fn derive_session_key(vault_id: &VaultId) -> [u8; 32] {
     key
 }
 
-/// Encrypt a secret key using a key derived from the vault ID.
+/// LEGACY: Encrypt a secret key using a key derived from the vault ID.
+/// Never called by new code. Kept only for reading legacy session files.
+#[allow(dead_code)]
 fn encrypt_secret_key(secret_key: &LocalSecretKey, vault_id: &VaultId) -> Option<String> {
     let key = derive_session_key(vault_id);
     let wrapped = porkpie_crypto::wrap_vault_key(&key, secret_key.as_bytes()).ok()?;
     Some(hex::encode(&wrapped))
 }
 
-/// Decrypt a secret key using a key derived from the vault ID.
+/// LEGACY: Decrypt a secret key using a key derived from the vault ID.
+/// Never called by new code. Kept only for reading legacy session files.
 fn decrypt_secret_key(wrapped_hex: &str, vault_id: &VaultId) -> Result<LocalSecretKey> {
     let key = derive_session_key(vault_id);
     let wrapped = hex::decode(wrapped_hex).map_err(|_| CliError::NoUnlockedSession)?;
@@ -224,22 +230,7 @@ fn decrypt_secret_key(wrapped_hex: &str, vault_id: &VaultId) -> Result<LocalSecr
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn session_file_does_not_store_local_secret_key() {
-        let vault_id = VaultId::new();
-        let session = SessionState::unlocked(vault_id);
-        let json = serde_json::to_string(&session).unwrap();
-        // The session JSON must not contain a secret_key_hex or secret_key_encrypted field.
-        assert!(
-            !json.contains("secret_key_hex"),
-            "session JSON should not store secret_key_hex"
-        );
-        assert!(
-            !json.contains("secret_key_encrypted"),
-            "session JSON should not store secret_key_encrypted"
-        );
-    }
+    use crate::secret_store::SecretStore;
 
     #[test]
     fn legacy_migration_clears_secret_fields() {
@@ -248,14 +239,93 @@ mod tests {
         let mut session = SessionState::unlocked(vault_id);
         session.secret_key_hex = Some(key.to_hex());
 
-        // Use a fake keychain for testing.
-        let _fake = std::sync::Arc::new(crate::secret_store::FakeKeychain::new());
-        // Temporarily replace default store logic... but we can't easily.
-        // Instead, verify the migration logic clears fields when store succeeds.
-        // For this test, we just check that the fields are present before migration.
+        let fake = crate::secret_store::FakeKeychain::new();
+        session.migrate_legacy_secret_with_store(&fake).unwrap();
+
+        assert!(session.secret_key_hex.is_none());
+        assert!(session.secret_key_encrypted.is_none());
+        assert_eq!(session.migrated, Some(true));
+
+        let loaded = fake.load_local_secret_key(&vault_id).unwrap();
+        assert!(loaded.is_some());
+        assert_eq!(loaded.unwrap().to_hex(), key.to_hex());
+    }
+
+    #[test]
+    fn legacy_migration_from_encrypted_clears_fields() {
+        let vault_id = VaultId::new();
+        let key = LocalSecretKey::generate();
+        let mut session = SessionState::unlocked(vault_id);
+        session.secret_key_encrypted = Some(encrypt_secret_key(&key, &vault_id).unwrap());
+
+        let fake = crate::secret_store::FakeKeychain::new();
+        session.migrate_legacy_secret_with_store(&fake).unwrap();
+
+        assert!(session.secret_key_hex.is_none());
+        assert!(session.secret_key_encrypted.is_none());
+        assert_eq!(session.migrated, Some(true));
+
+        let loaded = fake.load_local_secret_key(&vault_id).unwrap();
+        assert!(loaded.is_some());
+        assert_eq!(loaded.unwrap().to_hex(), key.to_hex());
+    }
+
+    #[test]
+    fn failed_migration_keeps_legacy_fields() {
+        let vault_id = VaultId::new();
+        let key = LocalSecretKey::generate();
+        let mut session = SessionState::unlocked(vault_id);
+        session.secret_key_hex = Some(key.to_hex());
+
+        // Use a fake keychain that fails by not implementing store (but FakeKeychain never fails)
+        // Instead, we test with a custom failing store.
+        struct FailingStore;
+        impl crate::secret_store::SecretStore for FailingStore {
+            fn store_local_secret_key(
+                &self,
+                _vault_id: &VaultId,
+                _key: &LocalSecretKey,
+            ) -> crate::secret_store::Result<()> {
+                Err(crate::secret_store::SecretStoreError::Unavailable(
+                    "test failure".to_string(),
+                ))
+            }
+            fn load_local_secret_key(
+                &self,
+                _vault_id: &VaultId,
+            ) -> crate::secret_store::Result<Option<LocalSecretKey>> {
+                Ok(None)
+            }
+            fn delete_local_secret_key(
+                &self,
+                _vault_id: &VaultId,
+            ) -> crate::secret_store::Result<()> {
+                Ok(())
+            }
+        }
+
+        session
+            .migrate_legacy_secret_with_store(&FailingStore)
+            .unwrap();
+
+        // Fields should be preserved because migration failed.
         assert!(session.secret_key_hex.is_some());
-        // After migration (with a real keychain present), they would be cleared.
-        // In a headless test environment, keyring may not be available.
+        assert_eq!(session.migrated, None);
+    }
+
+    #[test]
+    fn new_session_never_contains_secret_material() {
+        let vault_id = VaultId::new();
+        let session = SessionState::unlocked(vault_id);
+        let json = serde_json::to_string(&session).unwrap();
+        assert!(
+            !json.contains("secret_key_hex"),
+            "session JSON should not store secret_key_hex"
+        );
+        assert!(
+            !json.contains("secret_key_encrypted"),
+            "session JSON should not store secret_key_encrypted"
+        );
     }
 
     #[test]

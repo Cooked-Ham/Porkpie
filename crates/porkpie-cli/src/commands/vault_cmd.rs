@@ -23,6 +23,7 @@ pub async fn change_password(context: &CommandContext) -> Result<()> {
         vault.salt,
         vault.master_key_wrapped().to_vec(),
         vault.sync_revision(),
+        *vault.kdf_params(),
     );
     if test_vault.unlock(&current_password, &secret_key).is_err() {
         return Err(CliError::InvalidArgument(
@@ -69,9 +70,14 @@ pub async fn change_password(context: &CommandContext) -> Result<()> {
         .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?;
 
     // Update vault metadata.
-    porkpie_store::update_vault_wrapped_key(&pool, &vault_id, &new_wrapped)
-        .await
-        .map_err(CliError::Store)?;
+    porkpie_store::update_vault_wrapped_key(
+        &pool,
+        &vault_id,
+        &new_wrapped,
+        Some(vault.kdf_params()),
+    )
+    .await
+    .map_err(CliError::Store)?;
 
     // Update session if needed.
     let mut session = context.load_session()?;
@@ -118,14 +124,30 @@ pub async fn rotate_local_secret(context: &CommandContext) -> Result<()> {
     let new_wrapped = porkpie_crypto::wrap_vault_key(&new_master_key, vault_key)
         .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?;
 
-    porkpie_store::update_vault_wrapped_key(&pool, &vault_id, &new_wrapped)
-        .await
-        .map_err(CliError::Store)?;
-
-    // Store new secret key in keychain.
-    if let Some(store) = crate::secret_store::default_secret_store() {
-        let _ = store.store_local_secret_key(&vault_id, &new_secret_key);
+    // Store new secret key in keychain BEFORE updating DB.
+    let store = crate::secret_store::default_secret_store();
+    if let Some(ref s) = store {
+        s.store_local_secret_key(&vault_id, &new_secret_key)
+            .map_err(|e| {
+                CliError::InvalidArgument(format!(
+                    "failed to store new secret key in keychain: {e}"
+                ))
+            })?;
     }
+
+    // Delete old key from keychain.
+    if let Some(ref s) = store {
+        let _ = s.delete_local_secret_key(&vault_id);
+    }
+
+    porkpie_store::update_vault_wrapped_key(
+        &pool,
+        &vault_id,
+        &new_wrapped,
+        Some(vault.kdf_params()),
+    )
+    .await
+    .map_err(CliError::Store)?;
 
     println!("Local secret key rotated.");
     println!("NEW RECOVERY KIT (save this securely):");
@@ -168,18 +190,17 @@ pub async fn rotate_key(context: &CommandContext, skip_backup: bool) -> Result<(
         .rotate_vault_key(&password, &secret_key)
         .map_err(CliError::Core)?;
 
-    // Persist re-encrypted items.
-    for (item_id, ciphertext) in re_encrypted {
-        porkpie_store::update_item(&pool, &vault_id, &item_id, &ciphertext)
-            .await
-            .map_err(CliError::Store)?;
-    }
-
-    // Persist new wrapped vault key.
+    // Persist atomically in a single transaction.
     let new_wrapped = vault.master_key_wrapped().to_vec();
-    porkpie_store::update_vault_wrapped_key(&pool, &vault_id, &new_wrapped)
-        .await
-        .map_err(CliError::Store)?;
+    porkpie_store::rotate_vault_key_transactional(
+        &pool,
+        &vault_id,
+        &new_wrapped,
+        &re_encrypted,
+        Some(vault.kdf_params()),
+    )
+    .await
+    .map_err(CliError::Store)?;
 
     println!("Vault key rotated. All items re-encrypted.");
     Ok(())
@@ -275,7 +296,7 @@ pub async fn upgrade_kdf(context: &CommandContext, profile: &str) -> Result<()> 
     let new_wrapped = porkpie_crypto::wrap_vault_key(&new_master_key, vault_key)
         .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?;
 
-    porkpie_store::update_vault_wrapped_key(&pool, &vault_id, &new_wrapped)
+    porkpie_store::update_vault_wrapped_key(&pool, &vault_id, &new_wrapped, Some(&new_params))
         .await
         .map_err(CliError::Store)?;
 

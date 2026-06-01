@@ -41,23 +41,18 @@ pub async fn verify(_context: &CommandContext, kit_path: &Path) -> Result<()> {
 }
 
 /// Restore a vault from a recovery kit and encrypted backup.
-pub async fn restore(_context: &CommandContext, kit_path: &Path, backup_path: &Path) -> Result<()> {
-    let kit_contents = std::fs::read_to_string(kit_path).map_err(CliError::Io)?;
-    let kit: serde_json::Value = serde_json::from_str(&kit_contents)
-        .map_err(|e| CliError::InvalidArgument(format!("invalid kit JSON: {e}")))?;
-
-    let hex = kit["local_secret_key"]
-        .as_str()
-        .ok_or_else(|| CliError::InvalidArgument("missing local_secret_key".to_string()))?;
-    let secret_key = LocalSecretKey::from_hex(hex)
-        .map_err(|e| CliError::InvalidArgument(format!("invalid local secret key: {e}")))?;
-
-    println!(
-        "Recovery kit loaded for vault {}.",
-        kit["vault_id"].as_str().unwrap_or("")
-    );
-    println!("Backup path: {}", backup_path.display());
-    println!("Restore logic is not yet fully implemented. This is a scaffold.");
-    let _ = secret_key;
+///
+/// NOT YET IMPLEMENTED. This command is a scaffold and will be completed
+/// in a future release.
+pub async fn restore(
+    _context: &CommandContext,
+    _kit_path: &Path,
+    _backup_path: &Path,
+) -> Result<()> {
+    println!("porkpie recovery restore is not implemented yet.");
+    println!("To restore a vault manually:");
+    println!("  1. porkpie init <new-vault-name>");
+    println!("  2. Use the recovery kit's local secret key when unlocking.");
+    println!("  3. porkpie import <backup-file>");
     Ok(())
 }

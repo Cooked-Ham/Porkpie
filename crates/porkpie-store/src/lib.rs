@@ -18,7 +18,9 @@ pub use item_store::{
     load_items_with_type_since, store_item, update_item, upsert_item_revision,
 };
 pub use models::{EncryptedItemData, EncryptedVaultData, SyncState};
+pub use porkpie_crypto::Argon2Params;
 pub use sync_state::{load_sync_state, save_sync_state};
 pub use vault_store::{
-    delete_vault, load_vault, load_vault_by_name, store_vault, update_vault_wrapped_key,
+    delete_vault, load_vault, load_vault_by_name, rotate_vault_key_transactional, store_vault,
+    update_vault_wrapped_key,
 };

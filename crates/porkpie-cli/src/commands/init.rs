@@ -14,7 +14,18 @@ pub async fn run(context: &CommandContext) -> Result<()> {
     let pool = context.pool().await?;
 
     store_vault(&pool, &vault).await.map_err(map_store_error)?;
-    context.save_session(&SessionState::unlocked_with_key(vault.id, &secret_key))?;
+
+    // Store local secret key in OS keychain.
+    if let Some(store) = crate::secret_store::default_secret_store() {
+        if let Err(e) = store.store_local_secret_key(&vault.id, &secret_key) {
+            eprintln!("Warning: could not store secret key in OS keychain: {e}");
+            eprintln!("The vault is created, but you will need to provide the secret key manually when unlocking.");
+        }
+    } else {
+        eprintln!("Warning: OS keychain not available. Secret key will not be remembered.");
+    }
+
+    context.save_session(&SessionState::unlocked(vault.id))?;
 
     let recovery_path = format!("porkpie-recovery-kit-{}.json", vault.id);
     let recovery_json = serde_json::to_string_pretty(&recovery_kit)?;

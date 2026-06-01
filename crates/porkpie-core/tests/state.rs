@@ -37,6 +37,7 @@ fn encrypted_metadata_constructs_locked_vault() {
         vault.salt,
         vault.master_key_wrapped().clone(),
         vault.sync_revision(),
+        *vault.kdf_params(),
     );
 
     assert_eq!(loaded.state(), VaultState::Locked);

@@ -24,6 +24,7 @@ pub struct Vault {
     is_locked: bool,
     sync_revision: u64,
     vault_key: Option<Zeroizing<[u8; 32]>>,
+    kdf_params: Argon2Params,
 }
 
 impl Vault {
@@ -58,6 +59,7 @@ impl Vault {
                 is_locked: false,
                 sync_revision: 0,
                 vault_key: Some(vault_key),
+                kdf_params: Argon2Params::default(),
             },
             recovery_kit,
         ))
@@ -70,6 +72,7 @@ impl Vault {
         salt: [u8; 32],
         master_key_wrapped: Vec<u8>,
         sync_revision: u64,
+        kdf_params: Argon2Params,
     ) -> Self {
         Self {
             id,
@@ -81,6 +84,7 @@ impl Vault {
             is_locked: true,
             sync_revision,
             vault_key: None,
+            kdf_params,
         }
     }
 
@@ -94,7 +98,7 @@ impl Vault {
             &password,
             secret_key.as_bytes(),
             &self.salt,
-            &Argon2Params::default(),
+            &self.kdf_params,
         )?);
         let vault_key =
             unwrap_vault_key(&master_key, &self.master_key_wrapped).map_err(|error| {
@@ -246,8 +250,20 @@ impl Vault {
         self.is_locked
     }
 
+    /// Set KDF parameters (used during KDF upgrade).
+    /// The vault must be unlocked before calling this.
+    pub fn set_kdf_params(&mut self, params: Argon2Params) -> Result<()> {
+        self.ensure_unlocked()?;
+        self.kdf_params = params;
+        Ok(())
+    }
+
     /// Access the vault key bytes if the vault is unlocked.
     /// Returns None if locked.
+    pub fn kdf_params(&self) -> &Argon2Params {
+        &self.kdf_params
+    }
+
     pub fn vault_key(&self) -> Option<&[u8; 32]> {
         self.vault_key.as_ref().map(|zk| {
             let slice: &[u8] = zk.as_ref();
@@ -289,7 +305,7 @@ impl Vault {
             &password,
             secret_key.as_bytes(),
             &self.salt,
-            &Argon2Params::default(),
+            &self.kdf_params,
         )?);
         let new_vault_key = Zeroizing::new(random_bytes());
         let new_master_key_wrapped = wrap_vault_key(&master_key, &new_vault_key)?;

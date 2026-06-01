@@ -303,3 +303,58 @@ Reasons:
 Until these are completed, the safe label remains:
 
 > **Porkpie: foundational Rust prototype with real crypto and real architecture, but not safe for real credentials yet.**
+
+## Long-Horizon Security Follow-Up (2026-06-01)
+
+### Phase 01: OS Keychain Integration
+- `unlock` now uses `SessionState::unlocked()` (keychain-only) instead of `unlocked_with_key()` (stores secret key in session file)
+- `init` and `unlock` both store the local secret key in the OS keychain immediately
+- `unlocked_with_key()` is preserved for legacy test compatibility only
+- Added `FakeKeychain` for testable migration
+- `SessionState::lock()` clears the keychain reference
+
+### Phase 02: KDF Parameter Persistence
+- `Argon2Params` is now serializable (serde)
+- Vault schema stores `kdf_time_cost`, `kdf_mem_cost`, `kdf_parallelism`
+- `Vault::create()` writes `Argon2Params::default()`
+- `Vault::unlock()` reads stored KDF params; fallback to default for legacy vaults
+- `change_password` and `rotate_local_secret` use stored KDF params
+- `upgrade_kdf` updates the stored params
+- Schema migration: `migrate_vaults_kdf_params()` adds columns and defaults to standard params
+- Tests: `EncryptedVaultData` includes `kdf_params`; `load_vault` roundtrips
+
+### Phase 03: Transactional Vault Key Rotation
+- `rotate_vault_key_transactional()` added to `vault_store`
+- Uses `pool.begin()` transaction; updates all items + wrapped key atomically
+- `rotate_key` command uses the transactional function instead of per-item loop
+- If any item fails, the entire operation is rolled back
+
+### Phase 04: Local Secret Rotation Keychain Safety
+- `rotate_local_secret` stores new secret key in keychain BEFORE updating DB
+- If keychain write fails, the DB is never updated (old key still valid)
+- Old keychain entry is deleted after successful DB update
+
+### Phase 05: Recovery Restore Honesty
+- `porkpie recovery restore` prints explicit "not implemented yet" message
+- Provides manual workaround: `init` + `import`
+- Docs and `STATUS.md` reflect unimplemented status
+
+### Phase 06: API Key Admin Safety
+- `api_keys` table: added `label`, `revoked_at`, `last_used_at`
+- `upsert_api_key` returns `(key_id, key_hash)` and accepts label
+- `revoke_api_key_by_id` replaces hash-based revocation
+- `revoke` endpoint: takes `key_id`, returns `key_hash`, prevents last-key revocation unless `force=true`
+- `touch_api_key` updates `last_used_at` on every successful auth
+- `migrate_api_keys_metadata()` adds columns to existing tables
+- `PORKPIE_API_KEY` initialization uses label "default"
+- Tests updated to pass label parameter
+
+### Phase 07: SSH Agent Honesty
+- `porkpie ssh-agent` command reports honest status
+- Docs mark SSH agent as "protocol foundation only — socket integration pending"
+
+### Phase 08: Documentation
+- `README.md`: added new CLI commands, SSH agent caveat, recovery restore note
+- `STATUS.md`: added KDF, API key, recovery, and transactional rotation entries
+- `THREAT_MODEL.md`: updated completed list and SSH agent status
+- `AUDIT_REPORT.md`: this section added

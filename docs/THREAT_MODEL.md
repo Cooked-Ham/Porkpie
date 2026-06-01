@@ -49,7 +49,7 @@
 - [x] Master password change (re-wraps vault key)
 - [x] Argon2id calibration and KDF profiles
 - [x] Safer secret output (`--no-newline`, TTY warnings, clipboard clear)
-- [x] SSH agent protocol (Ed25519 signing)
+- [x] SSH agent protocol wire format (Ed25519 signing) — socket integration pending
 - [x] API key rotation endpoints (admin add/revoke)
 - [x] Property-based fuzzing (crypto roundtrip, ID parsing, nonce uniqueness)
 - [x] Startup self-check for DB path validation

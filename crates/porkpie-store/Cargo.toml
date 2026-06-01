@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 porkpie-core = { path = "../porkpie-core" }
+porkpie-crypto = { path = "../porkpie-crypto" }
 porkpie-types = { path = "../porkpie-types" }
 serde = { version = "1.0", features = ["derive"] }
 sqlx = { version = "0.9", features = ["sqlite", "runtime-tokio", "uuid"] }

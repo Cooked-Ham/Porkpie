@@ -730,6 +730,7 @@ mod local_storage_impl {
                 salt: vault.salt,
                 master_key_wrapped: vault.master_key_wrapped().clone(),
                 sync_revision: vault.sync_revision(),
+                kdf_params: porkpie_core::Argon2Params::default(),
             });
             guard.save_vaults(&vaults)?;
             guard.save_items(&vault.id.to_string(), &[])?;

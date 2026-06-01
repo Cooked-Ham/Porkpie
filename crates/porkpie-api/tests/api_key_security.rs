@@ -9,7 +9,7 @@ async fn api_key_is_stored_as_hash_not_plaintext() {
     db::run_migrations(&pool).await.expect("run migrations");
 
     let raw_key = "my-super-secret-api-key-12345";
-    db::upsert_api_key(&pool, raw_key)
+    db::upsert_api_key(&pool, raw_key, "default")
         .await
         .expect("upsert api key");
 
@@ -45,7 +45,7 @@ async fn api_key_validation_uses_hash_comparison() {
     db::run_migrations(&pool).await.expect("run migrations");
 
     let raw_key = "correct-key-abc";
-    db::upsert_api_key(&pool, raw_key)
+    db::upsert_api_key(&pool, raw_key, "default")
         .await
         .expect("upsert api key");
 

@@ -83,19 +83,23 @@ const MIGRATIONS: &[&str] = &[
         salt BLOB NOT NULL,
         master_key_wrapped BLOB NOT NULL,
         sync_revision INTEGER NOT NULL DEFAULT 0,
+        kdf_time_cost INTEGER NOT NULL DEFAULT 2,
+        kdf_mem_cost INTEGER NOT NULL DEFAULT 19456,
+        kdf_parallelism INTEGER NOT NULL DEFAULT 1,
         created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     "#,
     r#"
     CREATE TABLE IF NOT EXISTS items (
-        id TEXT PRIMARY KEY NOT NULL,
+        id TEXT NOT NULL,
         vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
         item_type TEXT NOT NULL,
         ciphertext BLOB NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         sync_revision INTEGER NOT NULL DEFAULT 0,
-        created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (vault_id, id)
     );
     "#,
     r#"
@@ -105,7 +109,7 @@ const MIGRATIONS: &[&str] = &[
         last_synced_at INTEGER
     );
     "#,
-    "CREATE INDEX IF NOT EXISTS idx_items_vault_id ON items(vault_id);",
+    "CREATE INDEX IF NOT EXISTS idx_items_vault_revision ON items(vault_id, sync_revision);",
     "CREATE INDEX IF NOT EXISTS idx_items_type ON items(item_type);",
     "CREATE INDEX IF NOT EXISTS idx_vaults_name ON vaults(name);",
 ];

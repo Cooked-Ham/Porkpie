@@ -105,6 +105,7 @@ pub async fn sync_push(
 ///
 /// The request body must contain the new API key in plaintext.
 /// The server hashes it and stores the hash for future validation.
+/// The plaintext key is returned ONLY ONCE in this response.
 /// The plaintext key is never stored.
 pub async fn admin_add_api_key(
     State(state): State<AppState>,
@@ -114,29 +115,49 @@ pub async fn admin_add_api_key(
         .get("api_key")
         .and_then(|v| v.as_str())
         .ok_or(ApiError::BadRequest("missing api_key".to_string()))?;
-    db::upsert_api_key(&state.pool, api_key).await?;
-    let key_hash = db::hash_api_key(api_key);
+    let label = request.get("label").and_then(|v| v.as_str()).unwrap_or("");
+    let (key_id, key_hash) = db::upsert_api_key(&state.pool, api_key, label).await?;
     Ok(Json(serde_json::json!({
         "ok": true,
+        "key_id": key_id,
         "key_hash": key_hash,
-        "message": "API key added. Store the plaintext key securely; it cannot be recovered."
+        "label": label,
+        "message": "API key added. Store the plaintext key securely; it cannot be recovered. This is the only time the plaintext key will be shown."
     })))
 }
 
-/// Admin: revoke an API key by its hash.
+/// Admin: revoke an API key by its ID.
 ///
-/// The request body must contain the key_hash to revoke.
+/// The request body must contain the key_id to revoke.
+/// Prevents revoking the last active key unless force=true.
 pub async fn admin_revoke_api_key(
     State(state): State<AppState>,
     Json(request): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>> {
-    let key_hash = request
-        .get("key_hash")
-        .and_then(|v| v.as_str())
-        .ok_or(ApiError::BadRequest("missing key_hash".to_string()))?;
-    db::revoke_api_key_by_hash(&state.pool, key_hash).await?;
+    let key_id = request
+        .get("key_id")
+        .and_then(|v| v.as_i64())
+        .ok_or(ApiError::BadRequest("missing key_id".to_string()))?;
+
+    let force = request
+        .get("force")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if !force {
+        let active_count = db::count_active_api_keys(&state.pool).await?;
+        if active_count <= 1 {
+            return Err(ApiError::BadRequest(
+                "Cannot revoke the last active API key. Pass force=true to override.".to_string(),
+            ));
+        }
+    }
+
+    let key_hash = db::revoke_api_key_by_id(&state.pool, key_id).await?;
     Ok(Json(serde_json::json!({
         "ok": true,
+        "key_id": key_id,
+        "key_hash": key_hash,
         "message": "API key revoked."
     })))
 }

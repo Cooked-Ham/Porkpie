@@ -130,6 +130,7 @@ fn encrypted_login(
         salt: vault.salt,
         master_key_wrapped: vault.master_key_wrapped().clone(),
         sync_revision: vault.sync_revision(),
+        kdf_params: porkpie_core::Argon2Params::default(),
     };
 
     (vault, vault_data, encrypted)

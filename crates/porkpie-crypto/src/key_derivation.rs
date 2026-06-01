@@ -3,6 +3,7 @@ use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
 use secrecy::{ExposeSecret, Secret};
 use zeroize::Zeroizing;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Argon2Params {
     pub time_cost: u32,
     pub mem_cost: u32,

@@ -1,4 +1,5 @@
 use crate::Vault;
+use porkpie_crypto::Argon2Params;
 use porkpie_types::{ItemId, Timestamp, VaultId};
 use serde::{Deserialize, Serialize};
 
@@ -11,6 +12,7 @@ pub struct EncryptedVaultData {
     pub salt: [u8; 32],
     pub master_key_wrapped: Vec<u8>,
     pub sync_revision: u64,
+    pub kdf_params: Argon2Params,
 }
 
 impl EncryptedVaultData {
@@ -23,6 +25,7 @@ impl EncryptedVaultData {
             self.salt,
             self.master_key_wrapped,
             self.sync_revision,
+            self.kdf_params,
         )
     }
 }

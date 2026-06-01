@@ -15,3 +15,5 @@ pub use state::VaultState;
 pub use vault::Vault;
 
 pub use porkpie_types::{LocalSecretKey, RecoveryKit};
+
+pub use porkpie_crypto::Argon2Params;

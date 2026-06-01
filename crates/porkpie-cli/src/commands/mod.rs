@@ -83,7 +83,7 @@ pub(crate) async fn unlock_current_vault(context: &CommandContext) -> Result<Vau
         .unlock(&password, &secret_key)
         .map_err(map_core_error)?;
 
-    let updated = SessionState::unlocked_with_key(vault_id, &secret_key);
+    let updated = SessionState::unlocked(vault_id);
     context.save_session(&updated)?;
     Ok(vault)
 }

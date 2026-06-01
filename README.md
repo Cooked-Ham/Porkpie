@@ -11,6 +11,7 @@ Local-first, zero-knowledge, self-hostable password manager for developers, home
 - **Built With:** Rust, Dioxus, Axum, SQLx
 - **Storage:** SQLite with encrypted vault metadata and item ciphertext only
 - **Sync:** Axum API with bearer-token auth and encrypted blob replication
+- **SSH Agent:** Protocol foundation only (wire format implemented; no socket integration yet)
 - **Desktop:** Dioxus desktop (WebView2 on Windows, WebKitGTK on Linux, WebKit on macOS)
 - **Web:** Dioxus web (WASM, no Electron, no React, no TypeScript, no Vite)
 
@@ -32,7 +33,15 @@ porkpie item list
 porkpie read pie://Personal/GitHub/password
 porkpie export
 porkpie import porkpie-backup-1780000000000.json.enc
+porkpie vault change-password
+porkpie vault rotate-local-secret
+porkpie vault rotate-key --skip-backup
+porkpie vault upgrade-kdf hardened
+porkpie vault calibrate-kdf 500
+porkpie recovery verify <kit>
 ```
+
+**Note:** `porkpie recovery restore` is not implemented yet. Use `porkpie init` + `porkpie import` for manual restore.
 
 CSV imports use the columns `item_type,title,username,password,notes`. Encrypted backups use `.json.enc` files and contain encrypted item blobs only.
 

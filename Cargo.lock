@@ -3524,6 +3524,7 @@ name = "porkpie-store"
 version = "0.1.0"
 dependencies = [
  "porkpie-core",
+ "porkpie-crypto",
  "porkpie-types",
  "serde",
  "sqlx",
