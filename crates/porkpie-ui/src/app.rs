@@ -8,39 +8,44 @@ use crate::vault_store::VaultBackend;
 use dioxus::prelude::*;
 
 const APP_CSS: &str = r#"
-:root {
-  color-scheme: dark light;
+[data-theme="dark"], :root {
   --bg: #101114;
   --surface: #181b20;
   --surface-2: #20242b;
+  --surface-3: #262a33;
   --text: #f3f6f8;
   --muted: #9aa7b4;
   --line: #313842;
   --accent: #4cc9a6;
   --accent-ink: #071612;
   --danger: #ff6b6b;
+  --shadow: rgba(0,0,0,0.4);
+  --modal-backdrop: rgba(0,0,0,0.6);
 }
 [data-theme="light"] {
   --bg: #f7f8fa;
   --surface: #ffffff;
   --surface-2: #eef1f4;
+  --surface-3: #e4e9ee;
   --text: #171a1f;
   --muted: #526170;
   --line: #d9e0e7;
   --accent: #067a63;
   --accent-ink: #ffffff;
+  --danger: #c53030;
+  --shadow: rgba(0,0,0,0.08);
+  --modal-backdrop: rgba(0,0,0,0.45);
 }
-[data-theme="light"] .sidebar { background: #ffffff; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-a { color: inherit; text-decoration: none; }
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 260px minmax(0, 1fr); }
-.sidebar { border-right: 1px solid var(--line); padding: 24px; background: #121419; position: sticky; top: 0; height: 100vh; }
-.brand { font-size: 1.35rem; font-weight: 800; margin-bottom: 28px; }
+.sidebar { border-right: 1px solid var(--line); padding: 24px; background: var(--surface); position: sticky; top: 0; height: 100vh; }
+.brand { font-size: 1.35rem; font-weight: 800; margin-bottom: 28px; color: var(--text); }
 .nav { display: grid; gap: 8px; }
-.nav a, .btn, .icon-btn { min-height: 40px; border-radius: 8px; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; font-weight: 700; }
-.nav a { justify-content: flex-start; color: var(--muted); background: transparent; }
-.nav a:focus-visible, .btn:focus-visible, .icon-btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.nav button, .btn, .icon-btn { min-height: 40px; border-radius: 8px; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; font-weight: 700; }
+.nav button { justify-content: flex-start; color: var(--muted); background: transparent; font-family: inherit; font-size: inherit; cursor: pointer; }
+.nav button:hover { background: var(--surface-2); }
+.nav button:focus-visible, .btn:focus-visible, .icon-btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .workspace { padding: 28px; display: grid; gap: 28px; max-width: 1180px; width: 100%; }
 .screen { scroll-margin-top: 20px; }
 .screen-header { margin-bottom: 16px; }
@@ -69,21 +74,18 @@ h2 { font-size: 1rem; margin-bottom: 6px; }
 .item-table { width: 100%; border-collapse: collapse; margin-top: 16px; min-width: 620px; }
 .item-table th, .item-table td { border-bottom: 1px solid var(--line); padding: 12px; text-align: left; }
 .item-table th { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: 0; }
+.item-table td { color: var(--text); }
 .toggle-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; }
 .toggle-grid label { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; min-height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 12px; }
 .generated { display: block; overflow-wrap: anywhere; font: 700 1rem ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
 .backup-row { display: flex; justify-content: space-between; gap: 16px; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
 .toast { border-left: 4px solid var(--accent); padding: 12px; background: var(--surface-2); color: var(--muted); }
 .notice { border-left: 4px solid var(--muted); padding: 12px; background: var(--surface-2); color: var(--muted); }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.modal { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; max-width: 540px; width: 100%; display: grid; gap: 16px; }
+.modal-backdrop { position: fixed; inset: 0; background: var(--modal-backdrop); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; max-width: 540px; width: 100%; display: grid; gap: 16px; box-shadow: 0 12px 40px var(--shadow); }
 .empty-state { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; }
 .field-row { display: grid; grid-template-columns: 140px 1fr auto; gap: 12px; align-items: center; }
 .field-row .field-label { color: var(--muted); font-weight: 700; }
-@media (prefers-color-scheme: light) {
-  :root { --bg: #f7f8fa; --surface: #ffffff; --surface-2: #eef1f4; --text: #171a1f; --muted: #526170; --line: #d9e0e7; --accent: #067a63; --accent-ink: #ffffff; }
-  .sidebar { background: #ffffff; }
-}
 @media (max-width: 780px) {
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -125,6 +127,7 @@ pub fn App(cx: Scope) -> Element {
     let theme = state_for_render.with(|s| s.settings.theme.to_string());
 
     let state_for_nav = state_for_render.clone();
+    let screen_for_nav = screen.clone();
 
     cx.render(rsx! {
         style { "{APP_CSS}" }
@@ -132,14 +135,20 @@ pub fn App(cx: Scope) -> Element {
             aside { class: "sidebar",
                 div { class: "brand", "Porkpie" }
                 nav { class: "nav", "aria-label": "Primary",
-                    if !matches!(screen, Screen::DbError) {
+                    if !matches!(screen_for_nav, Screen::DbError) {
+                        let nav_state = state_for_nav.clone();
+                        let nav_state_items = state_for_nav.clone();
                         rsx! {
-                            NavLink { state: state_for_nav.clone(), target: Screen::Onboarding, label: "Onboarding".to_string() }
-                            NavLink { state: state_for_nav.clone(), target: Screen::Unlock, label: "Unlock".to_string() }
-                            NavLink { state: state_for_nav.clone(), target: Screen::List, label: "Items".to_string() }
-                            NavLink { state: state_for_nav.clone(), target: Screen::PasswordGenerator, label: "Generator".to_string() }
-                            NavLink { state: state_for_nav.clone(), target: Screen::ImportExport, label: "Import/export".to_string() }
-                            NavLink { state: state_for_nav.clone(), target: Screen::Settings, label: "Settings".to_string() }
+                            NavLink { state: nav_state.clone(), target: Screen::Onboarding, label: "Onboarding".to_string() }
+                            NavLink { state: nav_state.clone(), target: Screen::Unlock, label: "Unlock".to_string() }
+                            if !matches!(screen_for_nav, Screen::Onboarding | Screen::Unlock) {
+                                rsx! {
+                                    NavLink { state: nav_state_items.clone(), target: Screen::List, label: "Items".to_string() }
+                                    NavLink { state: nav_state_items.clone(), target: Screen::PasswordGenerator, label: "Generator".to_string() }
+                                    NavLink { state: nav_state_items.clone(), target: Screen::ImportExport, label: "Import/export".to_string() }
+                                }
+                            }
+                            NavLink { state: nav_state.clone(), target: Screen::Settings, label: "Settings".to_string() }
                         }
                     }
                 }
@@ -173,8 +182,8 @@ fn NavLink(cx: Scope<NavLinkProps>) -> Element {
     let target = cx.props.target.clone();
     let label = cx.props.label.clone();
     cx.render(rsx! {
-        a {
-            href: "#",
+        button {
+            r#type: "button",
             onclick: move |_| state.with_mut(|s| s.screen = target.clone()),
             "{label}"
         }

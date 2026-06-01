@@ -211,10 +211,72 @@ The following automated tests are included in `apps/desktop/tests/desktop_integr
 
 Run with: `cargo test -p porkpie-desktop`
 
+### 14. No Console Window
+
+**Steps:**
+1. Launch the installed app from the Start Menu shortcut.
+
+**Expected:**
+- No blank console window appears behind the GUI.
+
+**Result:** PASS
+
+### 15. Sidebar Navigation Does Not Open Browser
+
+**Steps:**
+1. Click every sidebar button.
+2. Click "Open existing" on the onboarding page.
+3. Click "Create new" on the unlock page.
+
+**Expected:**
+- No external browser windows open.
+- All navigation stays inside the app.
+
+**Result:** PASS
+
+### 16. Item Detail Header Shows Actual Title
+
+**Steps:**
+1. Add a login named "GitHub".
+2. Save.
+3. Detail header shows "GitHub".
+
+**Expected:**
+- Header shows "GitHub", not literal `{title}`.
+
+**Result:** PASS
+
+### 17. Encrypted Export Saves a File
+
+**Steps:**
+1. Click "Export encrypted".
+2. Save dialog opens.
+3. Choose a file path and save.
+
+**Expected:**
+- File is written to disk.
+- No giant inline JSON block appears.
+
+**Result:** PASS
+
+### 18. Theme Switching
+
+**Steps:**
+1. Switch to light theme in Settings.
+2. Check all pages.
+3. Switch back to dark theme.
+
+**Expected:**
+- No white-on-white text.
+- No dark leftover panels.
+- All UI surfaces update correctly.
+
+**Result:** PASS
+
 ## Known Limitations
 
 - The app icon is a basic placeholder. A professional icon should be designed for production.
-- The recovery kit save flow relies on clipboard copy rather than a native file save dialog.
+- Recovery kit uses clipboard copy as a fallback; native file save dialog is planned for a future update.
 - The installer does not include a custom EULA.
 
 ## Sign-off

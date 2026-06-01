@@ -21,6 +21,7 @@ porkpie-import = { path = "../porkpie-import" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 arboard = "3.6"
 keyring = "3"
+rfd = "0.14"
 porkpie-import = { path = "../porkpie-import" }
 porkpie-store = { path = "../porkpie-store" }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "sqlite", "macros"] }

@@ -9,6 +9,8 @@
 //! so that `cargo run -p porkpie-desktop` produces a working window
 //! without requiring the Dioxus CLI.
 
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod launch_config;
 
 use launch_config::LaunchConfig;

@@ -6,6 +6,13 @@ use crate::vault_store::{VaultBackend, VaultStoreError, VaultSummary};
 use dioxus::prelude::*;
 use porkpie_types::LocalSecretKey;
 
+#[derive(Default, Clone)]
+struct PendingVault {
+    summary: Option<VaultSummary>,
+    password: String,
+    secret_key_hex: String,
+}
+
 /// Onboarding / create-vault screen. Form validation matches the master
 /// password policy and confirms the choice. On submit, a fresh local
 /// secret key is generated, stored in the OS credential manager, and the
@@ -23,6 +30,7 @@ pub fn OnboardingPage<'a>(cx: Scope<'a, OnboardingPageProps>) -> Element<'a> {
     let recovery_kit_json = use_state(cx, || None::<String>);
     let show_save_confirm = use_state(cx, || false);
     let saved_summary = use_state(cx, || None::<(VaultSummary, String)>);
+    let pending = use_ref(cx, PendingVault::default);
 
     let name_setter = name.clone();
     let password_setter = password.clone();
@@ -33,7 +41,7 @@ pub fn OnboardingPage<'a>(cx: Scope<'a, OnboardingPageProps>) -> Element<'a> {
     let show_save_confirm_setter = show_save_confirm.clone();
     let saved_summary_setter = saved_summary.clone();
 
-    let state_for_submit = state.clone();
+    let backend_for_submit = backend.clone();
     let submit = move |_| {
         if *submitting.get() {
             return;
@@ -52,16 +60,17 @@ pub fn OnboardingPage<'a>(cx: Scope<'a, OnboardingPageProps>) -> Element<'a> {
         }
 
         let secret_key = LocalSecretKey::generate();
+        let secret_key_hex = secret_key.to_hex();
 
         submitting_setter.set(true);
         error_setter.set(None);
-        let backend_handle = backend.clone();
-        let _state_handle = state_for_submit.clone();
+        let backend_handle = backend_for_submit.clone();
         let error_handle = error_setter.clone();
         let submitting_handle = submitting_setter.clone();
         let recovery_handle = recovery_setter.clone();
         let show_save_handle = show_save_confirm_setter.clone();
         let summary_handle = saved_summary_setter.clone();
+        let pending_handle = pending.clone();
         cx.spawn(async move {
             let backend = backend_handle.read().clone();
             let result = backend
@@ -78,6 +87,9 @@ pub fn OnboardingPage<'a>(cx: Scope<'a, OnboardingPageProps>) -> Element<'a> {
                             error_handle.set(Some(format!("Vault created, but could not store secret key in credential manager: {e}. Save the recovery kit below.")));
                         }
                     }
+                    pending_handle.write().summary = Some(summary.clone());
+                    pending_handle.write().password = raw_password;
+                    pending_handle.write().secret_key_hex = secret_key_hex;
                     recovery_handle.set(Some(json.clone()));
                     summary_handle.set(Some((summary, json)));
                     show_save_handle.set(true);
@@ -97,19 +109,52 @@ pub fn OnboardingPage<'a>(cx: Scope<'a, OnboardingPageProps>) -> Element<'a> {
     };
 
     let state_for_recovery = state.clone();
+    let backend_for_recovery = backend.clone();
+    let pending_for_recovery = pending.clone();
     let on_recovery_saved = move |_| {
         let state_handle = state_for_recovery.clone();
-        if let Some((summary, _)) = saved_summary.get().clone() {
-            state_handle.with_mut(|state| {
-                state.vaults.push(summary.clone());
-                state.current_vault = Some(summary);
-                state.items.clear();
-                state.screen = Screen::List;
-                state.status = Some(
-                    "Vault created. Save your recovery kit before locking.".to_string(),
-                );
-            });
-        }
+        let backend_handle = backend_for_recovery.clone();
+        let pending_handle = pending_for_recovery.clone();
+        cx.spawn(async move {
+            let p = pending_handle.read().clone();
+            if let Some(summary) = p.summary {
+                let secret_key = match LocalSecretKey::from_hex(&p.secret_key_hex) {
+                    Ok(k) => k,
+                    Err(_) => {
+                        state_handle.with_mut(|state| {
+                            state.error = Some("Invalid secret key stored during onboarding. Use recovery kit.".to_string());
+                            state.screen = Screen::Unlock;
+                        });
+                        return;
+                    }
+                };
+                let backend = backend_handle.read().clone();
+                match backend.unlock_vault(&summary.name, &p.password, &secret_key).await {
+                    Ok(handle) => {
+                        let items = match handle.list_items().await {
+                            Ok(items) => items,
+                            Err(_) => vec![],
+                        };
+                        state_handle.with_mut(|state| {
+                            if !state.vaults.iter().any(|v| v.id == summary.id) {
+                                state.vaults.push(summary.clone());
+                            }
+                            state.current_vault = Some(summary);
+                            state.unlocked_handle = Some(handle);
+                            state.items = items;
+                            state.screen = Screen::List;
+                            state.status = Some("Vault created and unlocked. Add your first item.".to_string());
+                        });
+                    }
+                    Err(e) => {
+                        state_handle.with_mut(|state| {
+                            state.error = Some(format!("Vault created but could not unlock: {e}"));
+                            state.screen = Screen::Unlock;
+                        });
+                    }
+                }
+            }
+        });
         show_save_confirm.set(false);
     };
 
@@ -126,12 +171,16 @@ pub fn OnboardingPage<'a>(cx: Scope<'a, OnboardingPageProps>) -> Element<'a> {
                     s.toast = Some("Recovery kit copied to clipboard. Paste and save it to a secure file.".to_string());
                 });
             }
-            // On desktop, also try to open a save dialog would be ideal, but for now we rely on copy
             let _ = filename;
             state_handle.with_mut(|s| {
                 s.toast = Some("Recovery kit copied to clipboard. Paste and save it to a secure file.".to_string());
             });
         }
+    };
+
+    let state_for_open_existing = state.clone();
+    let on_open_existing = move |_| {
+        state_for_open_existing.with_mut(|s| s.screen = Screen::Unlock);
     };
 
     cx.render(rsx! {
@@ -171,7 +220,11 @@ pub fn OnboardingPage<'a>(cx: Scope<'a, OnboardingPageProps>) -> Element<'a> {
                         disabled: *submitting.get(),
                         on_click: submit
                     }
-                    a { class: "btn btn-secondary", href: "#unlock", "Open existing" }
+                    Button {
+                        label: "Open existing",
+                        variant: "btn-secondary",
+                        on_click: on_open_existing
+                    }
                 }
             }
             if *show_save_confirm.get() {

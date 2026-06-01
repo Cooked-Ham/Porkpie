@@ -17,8 +17,7 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
 
     let status = use_state(cx, || None::<String>);
     let error = use_state(cx, || None::<String>);
-    let export_data = use_state(cx, || None::<String>);
-    let import_json = use_state(cx, String::new);
+    let export_path = use_state(cx, || None::<String>);
     let import_password = use_state(cx, String::new);
     let import_secret_key = use_state(cx, String::new);
     let submitting = use_state(cx, || false);
@@ -26,8 +25,6 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
 
     let status_setter = status.clone();
     let error_setter = error.clone();
-    #[cfg(not(target_arch = "wasm32"))]
-    let export_setter = export_data.clone();
     let state_for_export = state_ref.clone();
     let backend_for_export = backend.clone();
     let on_encrypted_export = move |_| {
@@ -36,10 +33,8 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
         let _backend_handle = backend_for_export.clone();
         let state_handle = state_for_export.clone();
         let error_handle = error_setter.clone();
-        #[cfg(not(target_arch = "wasm32"))]
         let status_handle = status_setter.clone();
-        #[cfg(not(target_arch = "wasm32"))]
-        let export_handle = export_setter.clone();
+        let export_path_handle = export_path.clone();
         cx.spawn(async move {
             #[cfg(not(target_arch = "wasm32"))]
             {
@@ -50,11 +45,28 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
                 };
                 match handle.export_encrypted().await {
                     Ok(export) => {
-                        export_handle.set(Some(export.json));
-                        status_handle.set(Some(format!(
-                            "Encrypted backup ready ({}). Copy the JSON below.",
-                            export.suggested_filename
-                        )));
+                        let dialog = rfd::FileDialog::new()
+                            .set_title("Save encrypted Porkpie backup")
+                            .set_file_name(&export.suggested_filename)
+                            .add_filter("JSON", &["json"]);
+                        if let Some(path) = dialog.save_file() {
+                            match std::fs::write(&path, &export.json) {
+                                Ok(_) => {
+                                    status_handle.set(Some(format!(
+                                        "Encrypted backup saved to {}",
+                                        path.display()
+                                    )));
+                                    export_path_handle.set(Some(path.to_string_lossy().to_string()));
+                                }
+                                Err(e) => {
+                                    error_handle.set(Some(format!(
+                                        "Could not write file: {e}"
+                                    )));
+                                }
+                            }
+                        } else {
+                            status_handle.set(Some("Save cancelled".to_string()));
+                        }
                     }
                     Err(error) => {
                         error_handle.set(Some(format!("Export failed: {error}")));
@@ -81,10 +93,8 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
         error.set(None);
         let state_handle = state_ref.clone();
         let error_handle = error.clone();
-        #[cfg(not(target_arch = "wasm32"))]
         let status_handle = status.clone();
-        #[cfg(not(target_arch = "wasm32"))]
-        let export_handle = export_data.clone();
+        let export_path_handle = export_path.clone();
         cx.spawn(async move {
             #[cfg(not(target_arch = "wasm32"))]
             {
@@ -97,12 +107,28 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
                     Ok(plain) => {
                         let json = serde_json::to_string_pretty(&plain)
                             .unwrap_or_else(|e| format!("plaintext export: {e}"));
-                        export_handle.set(Some(json));
-                        status_handle.set(Some(format!(
-                            "Plaintext backup ready for vault '{}' ({} items). Handle with care.",
-                            plain.vault_name,
-                            plain.items.len()
-                        )));
+                        let dialog = rfd::FileDialog::new()
+                            .set_title("Save plaintext Porkpie backup")
+                            .set_file_name(format!("{}_plaintext_backup.json", plain.vault_name))
+                            .add_filter("JSON", &["json"]);
+                        if let Some(path) = dialog.save_file() {
+                            match std::fs::write(&path, &json) {
+                                Ok(_) => {
+                                    status_handle.set(Some(format!(
+                                        "Plaintext backup saved to {}. Handle with care.",
+                                        path.display()
+                                    )));
+                                    export_path_handle.set(Some(path.to_string_lossy().to_string()));
+                                }
+                                Err(e) => {
+                                    error_handle.set(Some(format!(
+                                        "Could not write file: {e}"
+                                    )));
+                                }
+                            }
+                        } else {
+                            status_handle.set(Some("Save cancelled".to_string()));
+                        }
                     }
                     Err(error) => {
                         error_handle.set(Some(format!("Plaintext export failed: {error}")));
@@ -119,27 +145,19 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
         });
     };
 
-    let import_json_for_click = import_json.get().clone();
-    let import_password_for_click = import_password.get().clone();
-    let import_secret_key_for_click = import_secret_key.get().clone();
     let state_for_import = state_ref.clone();
     let status_for_import = status.clone();
     let error_for_import = error.clone();
-    let import_json_setter = import_json.clone();
     let import_password_setter = import_password.clone();
     let import_secret_key_setter = import_secret_key.clone();
     let on_import = move |_| {
-        if import_json_for_click.trim().is_empty() {
-            error_for_import.set(Some(
-                "Paste an encrypted backup JSON before importing".to_string(),
-            ));
-            return;
-        }
-        if import_password_for_click.is_empty() {
+        let password = import_password.get().clone();
+        let secret_key_hex = import_secret_key.get().clone();
+        if password.is_empty() {
             error_for_import.set(Some("Backup password is required".to_string()));
             return;
         }
-        let secret_key = match LocalSecretKey::from_hex(&import_secret_key_for_click) {
+        let secret_key = match LocalSecretKey::from_hex(&secret_key_hex) {
             Ok(key) => key,
             Err(parse_error) => {
                 error_for_import.set(Some(format!("Invalid local secret key: {parse_error}")));
@@ -153,9 +171,6 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
         let error_handle: UseState<Option<String>> = error_for_import.clone();
         let submitting_handle: UseState<bool> = submitting.clone();
         let backend_handle: UseRef<VaultBackend> = backend.clone();
-        let raw_json = import_json_for_click.clone();
-        let raw_password = import_password_for_click.clone();
-        #[cfg(not(target_arch = "wasm32"))]
         let status_handle: UseState<Option<String>> = status_for_import.clone();
         cx.spawn(async move {
             #[cfg(not(target_arch = "wasm32"))]
@@ -166,10 +181,32 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
                     submitting_handle.set(false);
                     return;
                 };
+
+                let dialog = rfd::FileDialog::new()
+                    .set_title("Select encrypted Porkpie backup")
+                    .add_filter("JSON", &["json", "enc"]);
+                let path = match dialog.pick_file() {
+                    Some(p) => p,
+                    None => {
+                        status_handle.set(Some("Import cancelled".to_string()));
+                        submitting_handle.set(false);
+                        return;
+                    }
+                };
+
+                let raw_json = match std::fs::read_to_string(&path) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error_handle.set(Some(format!("Could not read file: {e}")));
+                        submitting_handle.set(false);
+                        return;
+                    }
+                };
+
                 let _ = backend_handle;
                 match handle
                     .import_encrypted_with_keys(
-                        &raw_password,
+                        &password,
                         &secret_key,
                         &raw_json,
                         Default::default(),
@@ -215,8 +252,7 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
                 let _ = (
                     state_handle,
                     backend_handle,
-                    raw_json,
-                    raw_password,
+                    password,
                     secret_key,
                 );
                 error_handle.set(Some("Import is not available in this build".to_string()));
@@ -225,9 +261,9 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
         });
     };
 
-    let export_text = export_data.get().clone();
     let status_text = status.get().clone();
     let error_text = error.get().clone();
+    let saved_path = export_path.get().clone();
     #[cfg(not(target_arch = "wasm32"))]
     let is_unlocked = state_ref.with(|s| s.unlocked_handle.is_some());
     #[cfg(target_arch = "wasm32")]
@@ -265,24 +301,13 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
                         on_click: on_plaintext_export
                     }
                 }
-                export_text.as_ref().map(|text| rsx! {
-                    div { class: "form-grid",
-                        h2 { "Backup payload" }
-                        pre { class: "generated", "{text}" }
-                    }
+                saved_path.as_ref().map(|path| rsx! {
+                    div { class: "toast", role: "status", "Saved to: {path}" }
                 }),
                 div { class: "backup-row",
                     div {
                         h2 { "Import encrypted backup" }
-                        p { class: "muted", "Paste the JSON payload from a previous encrypted export." }
-                    }
-                }
-                label { class: "field",
-                    span { "Backup JSON" }
-                    textarea {
-                        class: "input textarea",
-                        value: "{import_json.get()}",
-                        oninput: move |event| import_json_setter.set(event.value.clone())
+                        p { class: "muted", "Select a JSON backup file from a previous export." }
                     }
                 }
                 PasswordInput {
@@ -309,10 +334,7 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
                 }),
                 error_text.as_ref().map(|msg| rsx! {
                     div { class: "inline-error", role: "alert", "{msg}" }
-                }),
-                div { class: "notice",
-                    "Not implemented yet: 1Password, Bitwarden, LastPass CSV importers, scheduled automatic backups, and remote sync to a self-hosted server."
-                }
+                })
             }
             if *show_plaintext_confirm.get() {
                 rsx! {

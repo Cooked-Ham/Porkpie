@@ -301,12 +301,18 @@ pub fn ItemDetailPage<'a>(cx: Scope<'a, ItemDetailPageProps>) -> Element<'a> {
     let form_notes_setter = form_notes.clone();
     let form_error_get = form_error.get().clone();
 
+    let heading = if is_new || title.trim().is_empty() {
+        "New item".to_string()
+    } else {
+        title.clone()
+    };
+
     cx.render(rsx! {
         section { class: "screen", id: "detail",
             div { class: "screen-header split",
                 div {
                     p { class: "eyebrow", if is_new { "New item" } else { "Item detail" } }
-                    h1 { if is_new { "New item" } else { "{title}" } }
+                    h1 { "{heading}" }
                 }
                 div { class: "actions",
                     Button { label: "Back", variant: "btn-secondary", on_click: on_back }

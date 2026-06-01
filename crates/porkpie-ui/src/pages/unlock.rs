@@ -230,7 +230,14 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
                             }
                         }
                     }
-                    a { class: "btn btn-secondary", href: "#onboarding", "Create new" }
+                    Button {
+                        label: "Create new",
+                        variant: "btn-secondary",
+                        on_click: move |_| {
+                            let state = state_ref.clone();
+                            state.with_mut(|s| s.screen = Screen::Onboarding);
+                        }
+                    }
                 }
             }
         }
