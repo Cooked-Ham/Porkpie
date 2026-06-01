@@ -55,11 +55,13 @@ These thirteen invariants are fundamental to Porkpie's operation. Violating any 
 **Enforcement:**
 - The Sync API expects heavily serialized JSON envelopes wrapped in XChaCha20Poly1305 blocks.
 - The server rejects sync push payloads that contain obvious plaintext patterns (e.g., JSON objects with field names like `username`, `password`, `private_key`, `api_key`, `totp`, or `notes`). Real ciphertext must be opaque binary data.
+- The server uses a composite primary key `(vault_id, id)` for items so that identical item IDs across different vaults cannot collide.
 
 **Good vs Bad:**
 - *Good*: Server receiving an EncryptedVaultPayload containing ciphertext and nonce.
 - *Bad*: Server attempting to deserialize item structures with serde_json.
 - *Bad*: Server accepting a push where the `ciphertext` field is literally a JSON object with plaintext credentials.
+- *Bad*: Server using `id TEXT PRIMARY KEY` alone, allowing cross-vault item ID collisions.
 
 ## 5. Authenticated Encryption Required
 

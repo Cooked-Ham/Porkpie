@@ -22,6 +22,20 @@ fn validates_generator_controls() {
 }
 
 #[test]
+fn password_generator_state_debug_redacts_generated_password() {
+    use porkpie_ui::state::PasswordGeneratorState;
+    let state = PasswordGeneratorState {
+        generated_password: "my-secret-generated-password-123".to_string(),
+        ..PasswordGeneratorState::default()
+    };
+    let debug = format!("{:?}", state);
+    assert!(debug.contains("[redacted]"));
+    assert!(!debug.contains("my-secret-generated-password-123"));
+    assert!(debug.contains("length"));
+    assert!(debug.contains("uppercase"));
+}
+
+#[test]
 fn filters_item_list_by_title_or_type() {
     let now = Timestamp::now();
     let items = vec![

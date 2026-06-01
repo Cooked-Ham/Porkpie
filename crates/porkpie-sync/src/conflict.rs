@@ -15,6 +15,7 @@ pub struct ConflictItem {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MergeStrategy {
     #[default]
+    PreserveConflict,
     LastWriteWins,
     PreferLocal,
     PreferRemote,
@@ -67,6 +68,7 @@ pub fn merge_items(
             }
             Some(local_item) => {
                 let choose_server = match strategy {
+                    MergeStrategy::PreserveConflict => continue,
                     MergeStrategy::PreferLocal => false,
                     MergeStrategy::PreferRemote => true,
                     MergeStrategy::LastWriteWins => server_item.updated_at >= local_item.updated_at,

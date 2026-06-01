@@ -28,7 +28,8 @@ cargo run --bin porkpie -- --help
 porkpie init
 porkpie unlock
 porkpie add login
-porkpie list
+porkpie item list
+porkpie read pie://Personal/GitHub/password
 porkpie export
 porkpie import porkpie-backup-1780000000000.json.enc
 ```
@@ -122,15 +123,22 @@ npx --yes http-server dist-web -p 8000
 
 The web shell mounts on the `<div id="main">` element in `apps/web/index.html`. Override the mount point with `PORKPIE_WEB_ROOT` before building.
 
-### Web app behaviour (Phase 07)
+### Web app behaviour
 
-The web shell uses the same `porkpie-ui::App` component as the desktop shell. The Dioxus app renders the Onboarding, Unlock, List, Detail, Password Generator, Import/Export, and Settings screens exactly as the desktop shell does. The shared vault store is unavailable in WASM (no SQLite in the browser), so:
+The web shell uses the same `porkpie-ui::App` component as the desktop shell. The Dioxus app renders the Onboarding, Unlock, List, Detail, Password Generator, Import/Export, and Settings screens exactly as the desktop shell does.
 
-- Onboarding and Unlock forms show "Database backend is not available" notices.
+The browser build stores encrypted vault metadata and item ciphertext in browser `localStorage`. This is encrypted at rest by Porkpie's vault crypto, but `localStorage` is still accessible to JavaScript running on the origin. Use a dedicated trusted origin. IndexedDB/OPFS is preferred for future production work.
+
+- Onboarding creates a vault in `localStorage` and surfaces the recovery kit.
+- Unlock loads the vault from `localStorage` and decrypts items in memory.
+- Item list, detail, create, update, and delete operate on `localStorage`.
 - The Password Generator works fully on WASM — it uses the `porkpie-core` password generator, which is pure Rust with no I/O.
-- All other pages render correctly but report that the local store is unavailable in this build. The plaintext-export confirm modal still appears; clicking confirm shows a "not available in this build" error.
+- Import/export works on WASM with the same limitations as the desktop (encrypted by default, plaintext with explicit `--dangerous`).
+- Lock clears decrypted state from memory.
 
-This is the documented web shell mode: the same UI surface area, the local store on the desktop, and a read-only / generator-only experience in the browser. Real client-side vault storage is not Phase 07's scope (it would require a JS storage bridge and is tracked in a later phase).
+All other vault I/O uses the same code paths as the desktop build, with `localStorage` replacing SQLite.
+
+This is the documented web shell mode: the same UI surface area, with `localStorage`-backed encrypted vault persistence in the browser.
 
 ## API Server
 

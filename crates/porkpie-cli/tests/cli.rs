@@ -188,3 +188,161 @@ fn ssh_agent_command_reports_honest_status() {
     let stdout = String::from_utf8(output.stdout).expect("stdout is utf8");
     assert!(stdout.contains("OpenSSH agent socket/named-pipe integration is not implemented yet."));
 }
+
+#[test]
+fn parses_write_with_stdin() {
+    let cli = Cli::parse_from(["porkpie", "write", "pie://Vault/Item/field", "--stdin"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Write {
+            uri,
+            value: None,
+            stdin: true,
+            prompt: false,
+        } if uri == "pie://Vault/Item/field"
+    ));
+}
+
+#[test]
+fn parses_write_with_prompt() {
+    let cli = Cli::parse_from(["porkpie", "write", "pie://Vault/Item/field", "--prompt"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Write {
+            uri,
+            value: None,
+            stdin: false,
+            prompt: true,
+        } if uri == "pie://Vault/Item/field"
+    ));
+}
+
+#[test]
+fn write_conflicting_args_fails() {
+    let result = Cli::try_parse_from([
+        "porkpie",
+        "write",
+        "pie://Vault/Item/field",
+        "value",
+        "--stdin",
+    ]);
+    assert!(result.is_err());
+    let result = Cli::try_parse_from([
+        "porkpie",
+        "write",
+        "pie://Vault/Item/field",
+        "value",
+        "--prompt",
+    ]);
+    assert!(result.is_err());
+}
+
+#[test]
+fn help_text_warns_about_literal_write_exposure() {
+    let mut command = Cli::command();
+    let mut help = Vec::new();
+    command.write_long_help(&mut help).expect("help renders");
+    let help = String::from_utf8(help).expect("help is utf8");
+    assert!(help.contains("shell history"));
+    assert!(help.contains("process lists"));
+}
+
+#[test]
+fn parses_item_get_command() {
+    let cli = Cli::parse_from([
+        "porkpie",
+        "item",
+        "get",
+        "550e8400-e29b-41d4-a716-446655440000",
+    ]);
+    assert!(matches!(
+        cli.command,
+        Commands::Item(ItemCommands::Get { id }) if id == "550e8400-e29b-41d4-a716-446655440000"
+    ));
+}
+
+#[test]
+fn parses_item_add_command() {
+    let cli = Cli::parse_from(["porkpie", "add", "login"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Add { item_type } if item_type == "login"
+    ));
+}
+
+#[test]
+fn parses_item_edit_command() {
+    let cli = Cli::parse_from(["porkpie", "edit", "550e8400-e29b-41d4-a716-446655440000"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Edit { id } if id == "550e8400-e29b-41d4-a716-446655440000"
+    ));
+}
+
+#[test]
+fn parses_item_delete_command() {
+    let cli = Cli::parse_from(["porkpie", "delete", "550e8400-e29b-41d4-a716-446655440000"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Delete { id } if id == "550e8400-e29b-41d4-a716-446655440000"
+    ));
+}
+
+#[test]
+fn parses_read_command() {
+    let cli = Cli::parse_from(["porkpie", "read", "pie://Personal/GitHub/password"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Read { uri } if uri == "pie://Personal/GitHub/password"
+    ));
+}
+
+#[test]
+fn parses_export_dangerous_command() {
+    let cli = Cli::parse_from(["porkpie", "export", "--format", "plaintext", "--dangerous"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Export {
+            format,
+            dangerous: true,
+            ..
+        } if format == "plaintext"
+    ));
+}
+
+#[test]
+fn parses_sync_strategy_preserve_conflict() {
+    let cli = Cli::parse_from(["porkpie", "sync", "--strategy", "preserve-conflict"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Sync {
+            strategy,
+            ..
+        } if strategy == "preserve-conflict"
+    ));
+}
+
+#[test]
+fn parses_sync_strategy_last_write_wins() {
+    let cli = Cli::parse_from(["porkpie", "sync", "--strategy", "last-write-wins"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Sync {
+            strategy,
+            ..
+        } if strategy == "last-write-wins"
+    ));
+}
+
+#[test]
+fn invalid_sync_strategy_is_rejected_at_runtime() {
+    // Clap parsing succeeds because strategy is a string; the CLI validates at runtime.
+    let cli = Cli::parse_from(["porkpie", "sync", "--strategy", "not-a-strategy"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Sync {
+            strategy,
+            ..
+        } if strategy == "not-a-strategy"
+    ));
+}

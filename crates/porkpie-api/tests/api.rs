@@ -186,7 +186,10 @@ async fn sync_routes_reject_revoked_api_key() {
         .await
         .expect("revoke api key");
 
-    let app = build_router(AppState { pool });
+    let app = build_router(AppState {
+        pool,
+        cors_allowed_origins: vec!["https://app.porkpie.love".to_string()],
+    });
 
     let response = app
         .oneshot(json_request(
@@ -424,7 +427,10 @@ async fn test_app() -> axum::Router {
     db::upsert_api_key(&pool, API_KEY)
         .await
         .expect("seed api key");
-    build_router(AppState { pool })
+    build_router(AppState {
+        pool,
+        cors_allowed_origins: vec!["https://app.porkpie.love".to_string()],
+    })
 }
 
 async fn seeded_app() -> (axum::Router, String) {
@@ -439,7 +445,13 @@ async fn seeded_app() -> (axum::Router, String) {
     db::upsert_vault_metadata(&pool, &vault_id)
         .await
         .expect("seed vault");
-    (build_router(AppState { pool }), vault_id)
+    (
+        build_router(AppState {
+            pool,
+            cors_allowed_origins: vec!["https://app.porkpie.love".to_string()],
+        }),
+        vault_id,
+    )
 }
 
 fn json_request<T: serde::Serialize>(uri: &str, body: &T, api_key: Option<&str>) -> Request<Body> {
@@ -480,4 +492,113 @@ fn encrypted_item(
         updated_at,
         sync_revision,
     }
+}
+
+#[tokio::test]
+async fn same_item_id_in_two_vaults_does_not_collide() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+    db::upsert_api_key(&pool, API_KEY)
+        .await
+        .expect("seed api key");
+
+    let vault_a = VaultId::new().to_string();
+    let vault_b = VaultId::new().to_string();
+    db::upsert_vault_metadata(&pool, &vault_a)
+        .await
+        .expect("seed vault A");
+    db::upsert_vault_metadata(&pool, &vault_b)
+        .await
+        .expect("seed vault B");
+
+    let app = build_router(AppState {
+        pool,
+        cors_allowed_origins: vec!["https://app.porkpie.love".to_string()],
+    });
+    let item_id = ItemId::new().to_string();
+
+    // Push item with same ID to vault A
+    let push_a = app
+        .clone()
+        .oneshot(json_request(
+            "/api/v1/sync/push",
+            &SyncPushRequest {
+                vault_id: vault_a.clone(),
+                base_revision: 0,
+                items: vec![encrypted_item(
+                    item_id.clone(),
+                    b"vault_a_ciphertext".to_vec(),
+                    0,
+                    1,
+                )],
+                merge_strategy: None,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("push A");
+    assert_eq!(push_a.status(), StatusCode::OK);
+
+    // Push item with same ID to vault B
+    let push_b = app
+        .clone()
+        .oneshot(json_request(
+            "/api/v1/sync/push",
+            &SyncPushRequest {
+                vault_id: vault_b.clone(),
+                base_revision: 0,
+                items: vec![encrypted_item(
+                    item_id.clone(),
+                    b"vault_b_ciphertext".to_vec(),
+                    0,
+                    1,
+                )],
+                merge_strategy: None,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("push B");
+    assert_eq!(push_b.status(), StatusCode::OK);
+
+    // Pull vault A and verify only vault A's item is returned
+    let begin_a = app
+        .clone()
+        .oneshot(json_request(
+            "/api/v1/sync/begin",
+            &SyncRequest {
+                vault_id: vault_a.clone(),
+                last_revision: 0,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("begin A");
+    assert_eq!(begin_a.status(), StatusCode::OK);
+    let sync_a: SyncResponse = response_json(begin_a).await;
+    assert_eq!(sync_a.items.len(), 1);
+    assert_eq!(sync_a.items[0].ciphertext, b"vault_a_ciphertext");
+
+    // Pull vault B and verify only vault B's item is returned
+    let begin_b = app
+        .oneshot(json_request(
+            "/api/v1/sync/begin",
+            &SyncRequest {
+                vault_id: vault_b.clone(),
+                last_revision: 0,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("begin B");
+    assert_eq!(begin_b.status(), StatusCode::OK);
+    let sync_b: SyncResponse = response_json(begin_b).await;
+    assert_eq!(sync_b.items.len(), 1);
+    assert_eq!(sync_b.items[0].ciphertext, b"vault_b_ciphertext");
+
+    // Verify sync revisions are independent
+    assert_eq!(sync_a.new_revision, 1);
+    assert_eq!(sync_b.new_revision, 1);
 }

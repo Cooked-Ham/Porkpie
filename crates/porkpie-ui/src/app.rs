@@ -3,7 +3,6 @@ use crate::pages::{
     SettingsPage, UnlockPage,
 };
 use crate::state::AppState;
-#[cfg(not(target_arch = "wasm32"))]
 use crate::state::Screen;
 use crate::vault_store::VaultBackend;
 use dioxus::prelude::*;
@@ -174,7 +173,34 @@ async fn initial_load(backend_ref: UseRef<VaultBackend>, state_ref: UseRef<AppSt
     }
     #[cfg(target_arch = "wasm32")]
     {
-        let _ = backend_ref;
-        let _ = state_ref;
+        let backend = match VaultBackend::connect_local_storage().await {
+            Ok(backend) => backend,
+            Err(error) => {
+                state_ref.with_mut(|state| {
+                    state.error = Some(format!("localStorage error: {error}"));
+                    state.screen = Screen::Onboarding;
+                });
+                return;
+            }
+        };
+        backend_ref.set(backend.clone());
+        match backend.list_vault_summaries().await {
+            Ok(summaries) => {
+                state_ref.with_mut(|state| {
+                    state.vaults = summaries;
+                    state.screen = if state.vaults.is_empty() {
+                        Screen::Onboarding
+                    } else {
+                        Screen::Unlock
+                    };
+                });
+            }
+            Err(error) => {
+                state_ref.with_mut(|state| {
+                    state.error = Some(format!("Failed to list vaults: {error}"));
+                    state.screen = Screen::Onboarding;
+                });
+            }
+        }
     }
 }

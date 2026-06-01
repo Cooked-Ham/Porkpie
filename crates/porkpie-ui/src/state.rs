@@ -1,4 +1,3 @@
-#[cfg(not(target_arch = "wasm32"))]
 use crate::vault_store::UnlockedVaultHandle;
 pub use crate::vault_store::{DecryptedItem, ItemSummary, VaultSummary};
 use porkpie_types::{ItemId, Timestamp};
@@ -41,7 +40,7 @@ impl Default for SettingsState {
 }
 
 /// Password generator form state.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PasswordGeneratorState {
     pub length: usize,
     pub uppercase: bool,
@@ -50,6 +49,20 @@ pub struct PasswordGeneratorState {
     pub symbols: bool,
     pub exclude_ambiguous: bool,
     pub generated_password: String,
+}
+
+impl std::fmt::Debug for PasswordGeneratorState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PasswordGeneratorState")
+            .field("length", &self.length)
+            .field("uppercase", &self.uppercase)
+            .field("lowercase", &self.lowercase)
+            .field("numbers", &self.numbers)
+            .field("symbols", &self.symbols)
+            .field("exclude_ambiguous", &self.exclude_ambiguous)
+            .field("generated_password", &"[redacted]")
+            .finish()
+    }
 }
 
 impl Default for PasswordGeneratorState {
@@ -91,7 +104,6 @@ pub struct AppState {
     pub current_vault: Option<VaultSummary>,
     pub items: Vec<ItemSummary>,
     pub current_item: Option<DecryptedItem>,
-    #[cfg(not(target_arch = "wasm32"))]
     pub unlocked_handle: Option<UnlockedVaultHandle>,
     pub search_query: String,
     pub last_activity: Timestamp,
@@ -110,7 +122,6 @@ impl Default for AppState {
             current_vault: None,
             items: Vec::new(),
             current_item: None,
-            #[cfg(not(target_arch = "wasm32"))]
             unlocked_handle: None,
             search_query: String::new(),
             last_activity: Timestamp::now(),
@@ -129,11 +140,8 @@ impl AppState {
         self.current_vault = None;
         self.items.clear();
         self.current_item = None;
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            // Drop the unlocked handle so the in-memory vault key is zeroized.
-            self.unlocked_handle = None;
-        }
+        // Drop the unlocked handle so the in-memory vault key is zeroized.
+        self.unlocked_handle = None;
         self.screen = Screen::Unlock;
         self.last_activity = Timestamp::now();
     }

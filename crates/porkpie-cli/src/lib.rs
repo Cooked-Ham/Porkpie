@@ -6,7 +6,7 @@ pub mod interactive;
 pub mod session;
 
 use clap::{Parser, Subcommand};
-use errors::Result;
+use errors::{CliError, Result};
 use porkpie_sync::MergeStrategy;
 
 /// Porkpie command-line arguments.
@@ -42,7 +42,19 @@ pub enum Commands {
     /// Read a single field value from a pie:// URI.
     Read { uri: String },
     /// Write a value to a single field via pie:// URI.
-    Write { uri: String, value: String },
+    /// WARNING: passing the value as a CLI argument exposes it to shell history and process lists.
+    /// Use --stdin or --prompt for safer secret entry.
+    Write {
+        uri: String,
+        /// Value to write. Omit if using --stdin or --prompt.
+        value: Option<String>,
+        /// Read value from stdin (hidden, no echo).
+        #[arg(long, conflicts_with = "value")]
+        stdin: bool,
+        /// Prompt for value interactively (hidden, no echo).
+        #[arg(long, conflicts_with = "value")]
+        prompt: bool,
+    },
     /// Copy a field value to clipboard via pie:// URI.
     Copy { uri: String },
     /// Run a command with secrets injected as environment variables.
@@ -85,8 +97,8 @@ pub enum Commands {
         /// Bearer API key. Defaults to PORKPIE_API_KEY.
         #[arg(long)]
         api_key: Option<String>,
-        /// Merge strategy: last-write-wins, prefer-local, prefer-remote. Defaults to last-write-wins.
-        #[arg(long, default_value = "last-write-wins")]
+        /// Merge strategy: preserve-conflict, last-write-wins, prefer-local, prefer-remote. Defaults to preserve-conflict.
+        #[arg(long, default_value = "preserve-conflict")]
         strategy: String,
     },
     /// SSH key management commands.
@@ -136,7 +148,33 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Item(ItemCommands::List) => commands::list::run(&context).await,
         Commands::Item(ItemCommands::Get { id }) => commands::get::run(&context, &id).await,
         Commands::Read { uri } => commands::read::run(&context, &uri).await,
-        Commands::Write { uri, value } => commands::write::run(&context, &uri, &value).await,
+        Commands::Write {
+            uri,
+            value,
+            stdin,
+            prompt,
+        } => {
+            let value = if let Some(v) = value {
+                if stdin || prompt {
+                    return Err(CliError::InvalidArgument(
+                        "cannot specify a value with --stdin or --prompt".to_string(),
+                    ));
+                }
+                v
+            } else if stdin {
+                let mut buf = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)
+                    .map_err(|e| CliError::InvalidArgument(format!("failed to read stdin: {e}")))?;
+                buf.trim_end().to_string()
+            } else if prompt {
+                crate::interactive::prompt_secret("Value", false)?
+            } else {
+                return Err(CliError::InvalidArgument(
+                    "value required unless --stdin or --prompt is used".to_string(),
+                ));
+            };
+            commands::write::run(&context, &uri, &value).await
+        }
         Commands::Copy { uri } => commands::copy::run(&context, &uri).await,
         Commands::Run { env, command } => commands::run_cmd::run(&context, env, command).await,
         Commands::Add { item_type } => commands::add::run(&context, &item_type).await,
@@ -158,7 +196,13 @@ pub async fn run(cli: Cli) -> Result<()> {
             server,
             api_key,
             strategy,
-        } => commands::sync::run(&context, server, api_key, parse_strategy(&strategy)).await,
+        } => {
+            let strategy = parse_strategy(&strategy)
+                .ok_or_else(|| CliError::InvalidArgument(
+                    format!("unknown strategy '{strategy}'; use preserve-conflict, last-write-wins, prefer-local, or prefer-remote")
+                ))?;
+            commands::sync::run(&context, server, api_key, strategy).await
+        }
         Commands::Ssh(SshCommands::PublicKey { target }) => {
             commands::ssh::run_public_key(&context, &target).await
         }
@@ -166,10 +210,12 @@ pub async fn run(cli: Cli) -> Result<()> {
     }
 }
 
-fn parse_strategy(value: &str) -> MergeStrategy {
+fn parse_strategy(value: &str) -> Option<MergeStrategy> {
     match value.to_ascii_lowercase().as_str() {
-        "prefer-local" | "preferlocal" => MergeStrategy::PreferLocal,
-        "prefer-remote" | "preferremote" => MergeStrategy::PreferRemote,
-        _ => MergeStrategy::LastWriteWins,
+        "preserve-conflict" | "preserveconflict" => Some(MergeStrategy::PreserveConflict),
+        "last-write-wins" | "lastwritewins" => Some(MergeStrategy::LastWriteWins),
+        "prefer-local" | "preferlocal" => Some(MergeStrategy::PreferLocal),
+        "prefer-remote" | "preferremote" => Some(MergeStrategy::PreferRemote),
+        _ => None,
     }
 }

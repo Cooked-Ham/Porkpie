@@ -19,10 +19,13 @@ use tower_http::cors::CorsLayer;
 #[derive(Clone)]
 pub struct AppState {
     pub pool: SqlitePool,
+    pub cors_allowed_origins: Vec<String>,
 }
 
 /// Build the API router.
 pub fn build_router(state: AppState) -> Router {
+    let cors_layer = build_cors_layer(&state);
+
     let protected_routes = Router::new()
         .route("/api/v1/sync/register", post(handlers::sync_register))
         .route("/api/v1/sync/begin", post(handlers::sync_begin))
@@ -37,6 +40,22 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/health", get(handlers::health))
         .route("/api/v1/status", get(handlers::status))
         .merge(protected_routes)
-        .layer(CorsLayer::permissive())
+        .layer(cors_layer)
         .with_state(state)
+}
+
+fn build_cors_layer(state: &AppState) -> CorsLayer {
+    let mut origins = Vec::new();
+    for origin in &state.cors_allowed_origins {
+        if let Ok(header) = origin.parse::<axum::http::header::HeaderValue>() {
+            origins.push(header);
+        }
+    }
+    if origins.is_empty() {
+        let default = "https://app.porkpie.love"
+            .parse::<axum::http::header::HeaderValue>()
+            .expect("valid default origin");
+        origins.push(default);
+    }
+    CorsLayer::new().allow_origin(origins)
 }

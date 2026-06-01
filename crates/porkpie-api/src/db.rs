@@ -28,6 +28,44 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     for statement in MIGRATIONS {
         pool.execute(*statement).await?;
     }
+    migrate_items_to_composite_pk(pool).await?;
+    Ok(())
+}
+
+async fn migrate_items_to_composite_pk(pool: &SqlitePool) -> Result<()> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'items'")
+            .fetch_optional(pool)
+            .await?;
+
+    if let Some((sql,)) = row {
+        if sql.contains("id TEXT PRIMARY KEY") && !sql.contains("PRIMARY KEY (vault_id, id)") {
+            pool.execute(
+                r#"
+                CREATE TABLE items_v2 (
+                    id TEXT NOT NULL,
+                    vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+                    item_type TEXT NOT NULL,
+                    ciphertext BLOB NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    sync_revision INTEGER NOT NULL DEFAULT 0,
+                    created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (vault_id, id)
+                )
+            "#,
+            )
+            .await?;
+            pool.execute("INSERT OR IGNORE INTO items_v2 SELECT * FROM items")
+                .await?;
+            pool.execute("DROP TABLE items").await?;
+            pool.execute("ALTER TABLE items_v2 RENAME TO items").await?;
+            pool.execute(
+                "CREATE INDEX IF NOT EXISTS idx_items_vault_revision ON items(vault_id, sync_revision);"
+            )
+            .await?;
+        }
+    }
     Ok(())
 }
 
@@ -366,7 +404,7 @@ async fn upsert_item(
             id, vault_id, item_type, ciphertext, created_at, updated_at, sync_revision
         )
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
+        ON CONFLICT(vault_id, id) DO UPDATE SET
             item_type = excluded.item_type,
             ciphertext = excluded.ciphertext,
             updated_at = excluded.updated_at,
@@ -442,14 +480,15 @@ const MIGRATIONS: &[&str] = &[
     "#,
     r#"
     CREATE TABLE IF NOT EXISTS items (
-        id TEXT PRIMARY KEY NOT NULL,
+        id TEXT NOT NULL,
         vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
         item_type TEXT NOT NULL,
         ciphertext BLOB NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         sync_revision INTEGER NOT NULL DEFAULT 0,
-        created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (vault_id, id)
     );
     "#,
     r#"

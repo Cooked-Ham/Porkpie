@@ -115,6 +115,16 @@ pub fn item_title(item_type: &ItemType) -> &str {
     }
 }
 
+/// Prompt for a secret value without echoing input.
+/// When `allow_empty` is true, a blank response means "keep existing".
+pub fn prompt_secret(prompt: &str, allow_empty: bool) -> Result<String> {
+    let mut password = Password::new().with_prompt(prompt.to_string());
+    if allow_empty {
+        password = password.allow_empty_password(true);
+    }
+    Ok(password.interact()?)
+}
+
 fn prompt_item_type(item_type: &str, existing: Option<&ItemType>) -> Result<ItemType> {
     match normalize_item_type(item_type).as_str() {
         "login" => prompt_login(existing),
@@ -142,9 +152,19 @@ fn prompt_login(existing: Option<&ItemType>) -> Result<ItemType> {
         Some(ItemType::Login(secret)) => Some(secret),
         _ => None,
     };
+    let password = prompt_secret("Password", existing.is_some())?;
+    let password = if let Some(secret) = existing {
+        if password.is_empty() {
+            secret.password.clone()
+        } else {
+            password
+        }
+    } else {
+        password
+    };
     Ok(ItemType::Login(LoginSecret {
         username: prompt_string("Username", existing.map(|s| s.username.as_str()))?,
-        password: prompt_string("Password", existing.map(|s| s.password.as_str()))?,
+        password,
         url: prompt_optional("URL", existing.and_then(|s| s.url.as_deref()))?,
         notes: prompt_optional("Notes", existing.and_then(|s| s.notes.as_deref()))?,
     }))
@@ -155,9 +175,19 @@ fn prompt_api_key(existing: Option<&ItemType>) -> Result<ItemType> {
         Some(ItemType::APIKey(secret)) => Some(secret),
         _ => None,
     };
+    let key = prompt_secret("Key", existing.is_some())?;
+    let key = if let Some(secret) = existing {
+        if key.is_empty() {
+            secret.key.clone()
+        } else {
+            key
+        }
+    } else {
+        key
+    };
     Ok(ItemType::APIKey(APIKeySecret {
         name: prompt_string("Name", existing.map(|s| s.name.as_str()))?,
-        key: prompt_string("Key", existing.map(|s| s.key.as_str()))?,
+        key,
         provider: prompt_string("Provider", existing.map(|s| s.provider.as_str()))?,
     }))
 }
@@ -168,11 +198,22 @@ fn prompt_ssh_key(existing: Option<&ItemType>) -> Result<ItemType> {
         _ => None,
     };
     let allowed_hosts_default = existing.map(|s| s.allowed_hosts.join(","));
+    let private_key = prompt_private_key(existing.map(|s| s.private_key.as_str()))?;
+    let passphrase = prompt_secret("Passphrase", existing.is_some())?;
+    let passphrase = if let Some(secret) = existing {
+        if passphrase.is_empty() {
+            secret.passphrase.clone()
+        } else {
+            Some(passphrase).filter(|s| !s.is_empty())
+        }
+    } else {
+        Some(passphrase).filter(|s| !s.is_empty())
+    };
     Ok(ItemType::SSHKey(SSHKeySecret {
         name: prompt_string("Name", existing.map(|s| s.name.as_str()))?,
         public_key: prompt_string("Public key", existing.map(|s| s.public_key.as_str()))?,
-        private_key: prompt_string("Private key", existing.map(|s| s.private_key.as_str()))?,
-        passphrase: prompt_optional("Passphrase", existing.and_then(|s| s.passphrase.as_deref()))?,
+        private_key,
+        passphrase,
         comment: prompt_optional("Comment", existing.and_then(|s| s.comment.as_deref()))?,
         allowed_hosts: prompt_string(
             "Allowed hosts (comma separated)",
@@ -184,6 +225,56 @@ fn prompt_ssh_key(existing: Option<&ItemType>) -> Result<ItemType> {
         .map(String::from)
         .collect(),
     }))
+}
+
+fn prompt_private_key(existing: Option<&str>) -> Result<String> {
+    let options = vec!["Paste interactively", "Read from file", "Read from stdin"];
+    let selection = Select::new()
+        .with_prompt("Private key source")
+        .items(&options)
+        .default(0)
+        .interact()?;
+    match selection {
+        0 => {
+            let key = prompt_secret("Paste private key", existing.is_some())?;
+            if let Some(existing_key) = existing {
+                if key.is_empty() {
+                    Ok(existing_key.to_string())
+                } else {
+                    Ok(key)
+                }
+            } else {
+                Ok(key)
+            }
+        }
+        1 => {
+            let path = Input::<String>::new()
+                .with_prompt("Private key file path")
+                .interact_text()?;
+            let contents = std::fs::read_to_string(&path).map_err(|e| {
+                CliError::InvalidArgument(format!("cannot read private key file: {e}"))
+            })?;
+            if contents.trim().is_empty() {
+                return Err(CliError::InvalidArgument(
+                    "private key file is empty".to_string(),
+                ));
+            }
+            Ok(contents)
+        }
+        2 => {
+            let mut value = String::new();
+            std::io::Read::read_to_string(&mut std::io::stdin(), &mut value).map_err(|e| {
+                CliError::InvalidArgument(format!("cannot read private key from stdin: {e}"))
+            })?;
+            if value.trim().is_empty() {
+                return Err(CliError::InvalidArgument(
+                    "private key from stdin is empty".to_string(),
+                ));
+            }
+            Ok(value)
+        }
+        _ => unreachable!(),
+    }
 }
 
 fn prompt_secure_note(existing: Option<&ItemType>) -> Result<ItemType> {
@@ -202,11 +293,21 @@ fn prompt_server(existing: Option<&ItemType>) -> Result<ItemType> {
         Some(ItemType::Server(secret)) => Some(secret),
         _ => None,
     };
+    let password = prompt_secret("Password", existing.is_some())?;
+    let password = if let Some(secret) = existing {
+        if password.is_empty() {
+            secret.password.clone()
+        } else {
+            Some(password).filter(|s| !s.is_empty())
+        }
+    } else {
+        Some(password).filter(|s| !s.is_empty())
+    };
     Ok(ItemType::Server(ServerSecret {
         hostname: prompt_string("Hostname", existing.map(|s| s.hostname.as_str()))?,
         port: prompt_u16("Port", existing.map(|s| s.port))?,
         username: prompt_string("Username", existing.map(|s| s.username.as_str()))?,
-        password: prompt_optional("Password", existing.and_then(|s| s.password.as_deref()))?,
+        password,
         notes: prompt_optional("Notes", existing.and_then(|s| s.notes.as_deref()))?,
     }))
 }
@@ -216,12 +317,22 @@ fn prompt_database(existing: Option<&ItemType>) -> Result<ItemType> {
         Some(ItemType::Database(secret)) => Some(secret),
         _ => None,
     };
+    let password = prompt_secret("Password", existing.is_some())?;
+    let password = if let Some(secret) = existing {
+        if password.is_empty() {
+            secret.password.clone()
+        } else {
+            password
+        }
+    } else {
+        password
+    };
     Ok(ItemType::Database(DatabaseSecret {
         engine: prompt_string("Engine", existing.map(|s| s.engine.as_str()))?,
         host: prompt_string("Host", existing.map(|s| s.host.as_str()))?,
         port: prompt_u16("Port", existing.map(|s| s.port))?,
         username: prompt_string("Username", existing.map(|s| s.username.as_str()))?,
-        password: prompt_string("Password", existing.map(|s| s.password.as_str()))?,
+        password,
         database: prompt_string("Database", existing.map(|s| s.database.as_str()))?,
     }))
 }
@@ -244,9 +355,19 @@ fn prompt_software_license(existing: Option<&ItemType>) -> Result<ItemType> {
         Some(ItemType::SoftwareLicense(secret)) => Some(secret),
         _ => None,
     };
+    let key = prompt_secret("Key", existing.is_some())?;
+    let key = if let Some(secret) = existing {
+        if key.is_empty() {
+            secret.key.clone()
+        } else {
+            key
+        }
+    } else {
+        key
+    };
     Ok(ItemType::SoftwareLicense(SoftwareLicenseSecret {
         product: prompt_string("Product", existing.map(|s| s.product.as_str()))?,
-        key: prompt_string("Key", existing.map(|s| s.key.as_str()))?,
+        key,
         version: prompt_optional("Version", existing.and_then(|s| s.version.as_deref()))?,
         expiry: prompt_optional("Expiry", existing.and_then(|s| s.expiry.as_deref()))?,
     }))
@@ -257,7 +378,16 @@ fn prompt_recovery_codes(existing: Option<&ItemType>) -> Result<ItemType> {
         Some(ItemType::RecoveryCodes(secret)) => Some(secret.codes.join(",")),
         _ => None,
     };
-    let raw_codes = prompt_string("Codes (comma separated)", existing_codes.as_deref())?;
+    let raw_codes = prompt_secret("Codes (comma separated)", existing_codes.is_some())?;
+    let raw_codes = if let Some(codes) = existing_codes {
+        if raw_codes.is_empty() {
+            codes.to_string()
+        } else {
+            raw_codes
+        }
+    } else {
+        raw_codes
+    };
     let codes = raw_codes
         .split(',')
         .map(str::trim)
@@ -268,30 +398,37 @@ fn prompt_recovery_codes(existing: Option<&ItemType>) -> Result<ItemType> {
 }
 
 fn prompt_custom(existing: Option<&ItemType>) -> Result<ItemType> {
-    let existing_fields = match existing {
-        Some(ItemType::Custom(secret)) => {
-            let serialized = secret
-                .fields
-                .iter()
-                .map(|(key, value)| format!("{key}={value}"))
-                .collect::<Vec<_>>()
-                .join(",");
-            Some(serialized)
-        }
+    let existing_fields: Option<HashMap<String, String>> = match existing {
+        Some(ItemType::Custom(secret)) => Some(secret.fields.clone()),
         _ => None,
     };
-    let raw_fields = prompt_string(
-        "Fields (key=value comma separated)",
-        existing_fields.as_deref(),
-    )?;
     let mut fields = HashMap::new();
-    for pair in raw_fields
-        .split(',')
-        .map(str::trim)
-        .filter(|pair| !pair.is_empty())
-    {
-        if let Some((key, value)) = pair.split_once('=') {
-            fields.insert(key.trim().to_string(), value.trim().to_string());
+    loop {
+        let key = prompt_string("Field name", None)?;
+        if key.trim().is_empty() {
+            break;
+        }
+        let existing_value = existing_fields
+            .as_ref()
+            .and_then(|f| f.get(&key))
+            .map(|s| s.as_str());
+        let value = prompt_secret("Field value", existing_value.is_some())?;
+        let value = if let Some(existing_val) = existing_value {
+            if value.is_empty() {
+                existing_val.to_string()
+            } else {
+                value
+            }
+        } else {
+            value
+        };
+        fields.insert(key.trim().to_string(), value);
+        let add_more = Confirm::new()
+            .with_prompt("Add another field?")
+            .default(false)
+            .interact()?;
+        if !add_more {
+            break;
         }
     }
     Ok(ItemType::Custom(CustomSecret { fields }))

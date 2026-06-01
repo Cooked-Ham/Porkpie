@@ -140,14 +140,16 @@ CREATE TABLE IF NOT EXISTS vaults (
 );
 
 CREATE TABLE IF NOT EXISTS items (
-    id TEXT PRIMARY KEY NOT NULL,
+    id TEXT NOT NULL,
     vault_id TEXT NOT NULL,
     item_type TEXT NOT NULL,
     ciphertext BLOB NOT NULL,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
+    sync_revision INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (vault_id, id),
     FOREIGN KEY(vault_id) REFERENCES vaults(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_items_vault_id ON items(vault_id);
+CREATE INDEX IF NOT EXISTS idx_items_vault_revision ON items(vault_id, sync_revision);
 ```

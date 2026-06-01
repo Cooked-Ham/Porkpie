@@ -32,7 +32,7 @@ async fn migrations_create_expected_indexes() {
         r#"
         SELECT name
         FROM sqlite_master
-        WHERE type = 'index' AND name IN ('idx_items_vault_id', 'idx_items_type')
+        WHERE type = 'index' AND name IN ('idx_items_vault_revision', 'idx_items_type')
         ORDER BY name
         "#,
     )
@@ -45,5 +45,5 @@ async fn migrations_create_expected_indexes() {
         .map(|row| row.get::<String, _>("name"))
         .collect::<Vec<_>>();
 
-    assert_eq!(names, vec!["idx_items_type", "idx_items_vault_id"]);
+    assert_eq!(names, vec!["idx_items_type", "idx_items_vault_revision"]);
 }

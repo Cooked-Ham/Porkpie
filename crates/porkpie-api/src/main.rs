@@ -21,7 +21,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db::run_migrations(&pool).await?;
     db::upsert_api_key(&pool, &config.api_key).await?;
 
-    let app = build_router(AppState { pool });
+    let app = build_router(AppState {
+        pool,
+        cors_allowed_origins: config.cors_allowed_origins.clone(),
+    });
     let listener = tokio::net::TcpListener::bind(config.listen_addr()).await?;
     println!("Server listening on {}", config.listen_addr());
     axum::serve(listener, app).await?;

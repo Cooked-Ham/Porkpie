@@ -87,7 +87,10 @@ async fn bidirectional_sync_with_conflict_preservation() {
     db::upsert_vault_metadata(&pool, &vault_id_str)
         .await
         .expect("seed vault");
-    let app = build_router(AppState { pool: pool.clone() });
+    let app = build_router(AppState {
+        pool: pool.clone(),
+        cors_allowed_origins: vec!["https://app.porkpie.love".to_string()],
+    });
 
     // ---- Step 1: Profile A creates an item ----
     let item_id = "item-1";

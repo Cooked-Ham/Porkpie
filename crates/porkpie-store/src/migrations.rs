@@ -11,6 +11,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         pool.execute(*statement).await.map_err(map_sqlx_error)?;
     }
 
+    migrate_items_to_composite_pk(pool).await?;
+
     Ok(())
 }
 
@@ -34,14 +36,15 @@ const MIGRATIONS: &[&str] = &[
     "#,
     r#"
     CREATE TABLE IF NOT EXISTS items (
-        id TEXT PRIMARY KEY NOT NULL,
+        id TEXT NOT NULL,
         vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
         item_type TEXT NOT NULL,
         ciphertext BLOB NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         sync_revision INTEGER NOT NULL DEFAULT 0,
-        created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (vault_id, id)
     );
     "#,
     r#"
@@ -51,7 +54,52 @@ const MIGRATIONS: &[&str] = &[
         last_synced_at INTEGER
     );
     "#,
-    "CREATE INDEX IF NOT EXISTS idx_items_vault_id ON items(vault_id);",
+    "CREATE INDEX IF NOT EXISTS idx_items_vault_revision ON items(vault_id, sync_revision);",
     "CREATE INDEX IF NOT EXISTS idx_items_type ON items(item_type);",
     "CREATE INDEX IF NOT EXISTS idx_vaults_name ON vaults(name);",
 ];
+
+async fn migrate_items_to_composite_pk(pool: &SqlitePool) -> Result<()> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'items'")
+            .fetch_optional(pool)
+            .await
+            .map_err(map_sqlx_error)?;
+
+    if let Some((sql,)) = row {
+        if sql.contains("id TEXT PRIMARY KEY") && !sql.contains("PRIMARY KEY (vault_id, id)") {
+            pool.execute(
+                r#"
+                CREATE TABLE items_v2 (
+                    id TEXT NOT NULL,
+                    vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+                    item_type TEXT NOT NULL,
+                    ciphertext BLOB NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    sync_revision INTEGER NOT NULL DEFAULT 0,
+                    created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (vault_id, id)
+                )
+            "#,
+            )
+            .await
+            .map_err(map_sqlx_error)?;
+            pool.execute("INSERT OR IGNORE INTO items_v2 SELECT * FROM items")
+                .await
+                .map_err(map_sqlx_error)?;
+            pool.execute("DROP TABLE items")
+                .await
+                .map_err(map_sqlx_error)?;
+            pool.execute("ALTER TABLE items_v2 RENAME TO items")
+                .await
+                .map_err(map_sqlx_error)?;
+            pool.execute(
+                "CREATE INDEX IF NOT EXISTS idx_items_vault_revision ON items(vault_id, sync_revision);",
+            )
+            .await
+            .map_err(map_sqlx_error)?;
+        }
+    }
+    Ok(())
+}
