@@ -158,6 +158,8 @@ mod tests {
     use crate::agent::Agent;
     #[cfg(windows)]
     use crate::in_memory_signer::Ed25519Signer;
+    #[cfg(windows)]
+    use crate::AgentIdentity;
 
     #[test]
     fn service_query_on_non_windows_returns_false() {
