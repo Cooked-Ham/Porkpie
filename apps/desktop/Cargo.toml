@@ -5,8 +5,10 @@ edition = "2021"
 
 [dependencies]
 porkpie-ui = { path = "../../crates/porkpie-ui" }
+porkpie-store = { path = "../../crates/porkpie-store" }
 dioxus = "0.4"
 dioxus-desktop = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [[bin]]
 name = "porkpie-desktop"

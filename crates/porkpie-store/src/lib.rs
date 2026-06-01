@@ -11,7 +11,7 @@ pub mod models;
 pub mod sync_state;
 pub mod vault_store;
 
-pub use db::{connect, connect_database};
+pub use db::{connect, connect_database, sqlite_url_from_path, startup_self_check};
 pub use errors::{Result, StoreError};
 pub use item_store::{
     delete_item, load_item, load_item_record, load_item_records, load_items, load_items_with_type,

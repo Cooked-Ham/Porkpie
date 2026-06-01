@@ -23,6 +23,16 @@ pub enum StoreError {
     InvalidSaltLength(usize),
     #[error("Database error: {0}")]
     DatabaseError(String),
+    #[error("Database URL is invalid: {0}")]
+    InvalidUrl(String),
+    #[error("Cannot create database directory: {0}")]
+    CannotCreateDirectory(String),
+    #[error("Cannot open database: {0}")]
+    CannotOpenDatabase(String),
+    #[error("Migration failed: {0}")]
+    MigrationFailed(String),
+    #[error("Permission denied: {0}")]
+    PermissionDenied(String),
 }
 
 pub(crate) fn map_sqlx_error(error: sqlx::Error) -> StoreError {

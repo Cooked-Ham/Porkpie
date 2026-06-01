@@ -142,6 +142,67 @@ This is the documented web shell mode: the same UI surface area, with `localStor
 
 ## API Server
 
+### Troubleshooting
+
+#### Database path issues
+
+If the desktop app fails to start with a database error, the startup self-check will print the exact failure category:
+
+- `invalid URL` — the `PORKPIE_DATABASE_URL` value is not a valid SQLx SQLite URL.
+- `cannot create directory` — the parent directory of the database file could not be created.
+- `cannot open database` — the database file could not be opened (e.g., a directory exists at the same path).
+- `migration failed` — the schema migration step failed.
+- `permission denied` — the process lacks write permission to the database directory.
+
+#### Override the default database path
+
+The desktop app defaults to the platform data directory:
+
+| Platform | Default path |
+|----------|-------------|
+| Windows | `%APPDATA%\Porkpie\porkpie.db` |
+| macOS | `~/Library/Application Support/Porkpie/porkpie.db` |
+| Linux | `$XDG_DATA_HOME/porkpie/porkpie.db` (or `~/.local/share/porkpie/porkpie.db`) |
+
+Override the parent directory:
+
+```bash
+PORKPIE_DATA_DIR=/custom/path cargo run -p porkpie-desktop
+```
+
+Override the full SQLite URL:
+
+```bash
+PORKPIE_DATABASE_URL="sqlite:///custom/path/porkpie.db?mode=rwc" cargo run -p porkpie-desktop
+```
+
+On Windows, backslashes are automatically converted to forward slashes in the URL:
+
+```powershell
+$env:PORKPIE_DATA_DIR="C:\Users\Alice\Porkpie"
+cargo run -p porkpie-desktop
+# URL becomes: sqlite://C:/Users/Alice/Porkpie/porkpie.db?mode=rwc
+```
+
+#### Reset the local dev database
+
+Delete the SQLite file and WAL/SHM artifacts:
+
+```bash
+# macOS
+rm -f ~/Library/Application\ Support/Porkpie/porkpie.db*
+
+# Linux
+rm -f ~/.local/share/porkpie/porkpie.db*
+
+# Windows (PowerShell)
+Remove-Item "$env:APPDATA\Porkpie\porkpie.db*"
+```
+
+Or set `PORKPIE_DATABASE_URL=sqlite::memory:` to use an ephemeral in-memory database.
+
+## API Server
+
 ```bash
 # Production (with Caddy reverse proxy + HTTPS)
 cd infra/compose
