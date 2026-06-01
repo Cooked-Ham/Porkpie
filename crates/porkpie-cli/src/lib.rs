@@ -133,8 +133,9 @@ pub enum Commands {
     /// Keychain management commands.
     #[command(subcommand)]
     Keychain(KeychainCommands),
-    /// Start the SSH agent.
-    SshAgent,
+    /// SSH agent management commands.
+    #[command(subcommand)]
+    SshAgent(SshAgentCommands),
 }
 
 /// Item subcommands.
@@ -198,6 +199,19 @@ pub enum RecoveryCommands {
 pub enum SshCommands {
     /// Display the public key for an SSH key item.
     PublicKey { target: String },
+}
+
+/// SSH agent subcommands.
+#[derive(Debug, Subcommand)]
+pub enum SshAgentCommands {
+    /// Start the SSH agent (foreground).
+    Start,
+    /// Print the environment variable needed to use the agent.
+    Env,
+    /// Check whether the agent is running.
+    Status,
+    /// Stop the agent (remove socket / pipe).
+    Stop,
 }
 
 /// Backup subcommands.
@@ -320,7 +334,14 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Ssh(SshCommands::PublicKey { target }) => {
             commands::ssh::run_public_key(&context, &target).await
         }
-        Commands::SshAgent => commands::ssh::run_agent(&context).await,
+        Commands::SshAgent(SshAgentCommands::Start) => {
+            commands::ssh::run_agent_start(&context).await
+        }
+        Commands::SshAgent(SshAgentCommands::Env) => commands::ssh::run_agent_env(&context).await,
+        Commands::SshAgent(SshAgentCommands::Status) => {
+            commands::ssh::run_agent_status(&context).await
+        }
+        Commands::SshAgent(SshAgentCommands::Stop) => commands::ssh::run_agent_stop(&context).await,
         Commands::Keychain(KeychainCommands::Status) => {
             commands::keychain::run_status(&context).await
         }

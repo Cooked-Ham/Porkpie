@@ -123,7 +123,8 @@ impl Agent {
         }
     }
 
-    fn process_request(&self, payload: &[u8]) -> Result<Vec<u8>, AgentError> {
+    /// Process a single request payload and return the response.
+    pub fn process_request(&self, payload: &[u8]) -> Result<Vec<u8>, AgentError> {
         if payload.is_empty() {
             return Err(AgentError::Protocol("empty payload".to_string()));
         }

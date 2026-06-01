@@ -37,7 +37,7 @@ It is not externally audited and should not be broadly recommended for other peo
 
 ## Partial / Scaffolded
 
-- **porkpie-agent**: The `SshSigner` trait, `Ed25519Signer`, and policy structs are real and tested. The `porkpie ssh-agent` CLI command starts a real OpenSSH-compatible Unix domain socket agent. Supports both raw Ed25519 seeds and standard OpenSSH private key PEM format. Encrypted OpenSSH keys are not supported. Windows named pipes are not supported.
+- **porkpie-agent**: The `SshSigner` trait, `Ed25519Signer`, and policy structs are real and tested. The `porkpie ssh-agent start` CLI command starts a real OpenSSH-compatible agent on a Unix domain socket (macOS/Linux) or Windows named pipe (Windows). Supports both raw Ed25519 seeds and standard OpenSSH private key PEM format. Encrypted OpenSSH keys are not supported. Windows named pipe transport is implemented with service collision detection.
 - **apps/server**: Re-exports `porkpie_api::{build_router, AppState}`. The actual server binary lives in `crates/porkpie-api` (binary name `porkpie-server`). The `apps/server` crate is a library-only wrapper.
 
 ## Stubs / Empty Shells

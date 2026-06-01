@@ -1,7 +1,8 @@
 use clap::{CommandFactory, Parser};
 use porkpie_cli::secret_store::SecretStore;
 use porkpie_cli::{
-    BackupCommands, Cli, Commands, ItemCommands, KeychainCommands, RecoveryCommands, SshCommands,
+    BackupCommands, Cli, Commands, ItemCommands, KeychainCommands, RecoveryCommands,
+    SshAgentCommands, SshCommands,
 };
 use porkpie_types::{LocalSecretKey, VaultId};
 
@@ -112,9 +113,18 @@ fn parses_ssh_public_key_command() {
 }
 
 #[test]
-fn parses_ssh_agent_command() {
-    let cli = Cli::parse_from(["porkpie", "ssh-agent"]);
-    assert!(matches!(cli.command, Commands::SshAgent));
+fn parses_ssh_agent_start_command() {
+    let cli = Cli::parse_from(["porkpie", "ssh-agent", "start"]);
+    assert!(matches!(
+        cli.command,
+        Commands::SshAgent(SshAgentCommands::Start)
+    ));
+}
+
+#[test]
+fn bare_ssh_agent_prints_help() {
+    let result = Cli::try_parse_from(["porkpie", "ssh-agent"]);
+    assert!(result.is_err());
 }
 
 #[test]
@@ -183,7 +193,7 @@ fn parses_export_plaintext_requires_dangerous() {
 #[test]
 fn ssh_agent_command_requires_unlocked_vault() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_porkpie"))
-        .args(["ssh-agent"])
+        .args(["ssh-agent", "start"])
         .output()
         .expect("run porkpie ssh-agent");
 

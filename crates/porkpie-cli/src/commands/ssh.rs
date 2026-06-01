@@ -48,11 +48,13 @@ pub async fn run_public_key(context: &CommandContext, target: &str) -> Result<()
     Ok(())
 }
 
-/// Start the Porkpie SSH agent.
+/// Start the Porkpie SSH agent (foreground).
 ///
-/// Loads SSH keys from the unlocked vault, starts a Unix domain socket
-/// listener, and prints `SSH_AUTH_SOCK` for the user to export.
-pub async fn run_agent(context: &CommandContext) -> Result<()> {
+/// On Unix: binds a Unix domain socket at the default or env-specified path.
+/// On Windows: binds the named pipe `\\.\pipe\openssh-ssh-agent` after
+/// checking that the built-in Windows OpenSSH Authentication Agent service is
+/// not running.
+pub async fn run_agent_start(context: &CommandContext) -> Result<()> {
     let vault = unlock_current_vault(context).await?;
 
     let items = vault.list_items().map_err(crate::errors::map_core_error)?;
@@ -64,17 +66,12 @@ pub async fn run_agent(context: &CommandContext) -> Result<()> {
         if let ItemType::SSHKey(secret) = &item.data {
             ssh_keys_found = true;
 
-            // Parse the private key. We support two formats:
-            // 1. Standard OpenSSH private key PEM (e.g. `-----BEGIN OPENSSH PRIVATE KEY-----`)
-            // 2. Raw 64-char hex string (32 bytes) -> direct Ed25519 seed
-            // 3. Base64-encoded raw key
             let signer_result = if secret.private_key.contains("OPENSSH PRIVATE KEY") {
                 porkpie_agent::Ed25519Signer::from_openssh(
                     &secret.private_key,
                     secret.passphrase.as_deref(),
                 )
             } else if secret.private_key.len() == 64 {
-                // Try hex
                 if let Ok(bytes) = hex::decode(&secret.private_key) {
                     if bytes.len() == 32 {
                         let seed: [u8; 32] = bytes.try_into().expect("32 bytes");
@@ -92,7 +89,6 @@ pub async fn run_agent(context: &CommandContext) -> Result<()> {
                     )))
                 }
             } else {
-                // Try base64
                 match base64::engine::general_purpose::STANDARD.decode(&secret.private_key) {
                     Ok(decoded) => {
                         if decoded.len() == 32 {
@@ -139,7 +135,9 @@ pub async fn run_agent(context: &CommandContext) -> Result<()> {
 
     if !ssh_keys_found {
         println!("No SSH key items found in the current vault.");
-        println!("Add an SSH key item with `porkpie add SSHKey` and then run `porkpie ssh-agent`.");
+        println!(
+            "Add an SSH key item with `porkpie add SSHKey` and then run `porkpie ssh-agent start`."
+        );
         return Ok(());
     }
 
@@ -154,29 +152,178 @@ pub async fn run_agent(context: &CommandContext) -> Result<()> {
         }
     }));
 
-    // Choose a socket path
-    let socket_path = if let Ok(path) = std::env::var("PORKPIE_SSH_AGENT_SOCK") {
-        std::path::PathBuf::from(path)
-    } else {
-        std::env::temp_dir().join("porkpie-ssh-agent.sock")
-    };
-
-    println!("\nExport the following environment variable to use the agent:");
-    println!("  export SSH_AUTH_SOCK={}", socket_path.display());
-    println!();
-    println!("Then test with: ssh -T git@github.com");
-    println!();
-    println!("Press Ctrl+C to stop the agent.");
-
-    // Start the Unix socket listener
     #[cfg(unix)]
     {
+        let socket_path = if let Ok(path) = std::env::var("PORKPIE_SSH_AGENT_SOCK") {
+            std::path::PathBuf::from(path)
+        } else {
+            std::env::temp_dir().join("porkpie-ssh-agent.sock")
+        };
+
+        println!("\nExport the following environment variable to use the agent:");
+        println!("  export SSH_AUTH_SOCK={}", socket_path.display());
+        println!();
+        println!("Then test with: ssh -T git@github.com");
+        println!();
+        println!("Press Ctrl+C to stop the agent.");
+
         if let Err(e) = porkpie_agent::run_unix_socket(agent, &socket_path) {
             return Err(CliError::InvalidArgument(format!("SSH agent failed: {e}")));
         }
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        let pipe_name = porkpie_agent::windows_pipe::DEFAULT_PIPE_NAME;
+
+        println!("Porkpie SSH agent will bind the named pipe:");
+        println!("  {pipe_name}");
+        println!();
+        println!("This replaces the Windows OpenSSH Authentication Agent service.");
+        println!("If the built-in service is running, disable it first:");
+        println!("  Stop-Service ssh-agent");
+        println!("  Set-Service ssh-agent -StartupType Disabled");
+        println!();
+        println!("Then test with: ssh -T git@github.com");
+        println!();
+        println!("Press Ctrl+C to stop the agent.");
+
+        let agent = std::sync::Arc::new(std::sync::Mutex::new(agent));
+        if let Err(e) = porkpie_agent::run_windows_named_pipe(pipe_name, agent).await {
+            return Err(CliError::InvalidArgument(format!("SSH agent failed: {e}")));
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        println!("SSH agent is not supported on this platform.");
+    }
+
+    Ok(())
+}
+
+/// Print the environment variable or configuration needed to use the agent.
+pub async fn run_agent_env(_context: &CommandContext) -> Result<()> {
+    #[cfg(unix)]
+    {
+        let socket_path = if let Ok(path) = std::env::var("PORKPIE_SSH_AGENT_SOCK") {
+            std::path::PathBuf::from(path)
+        } else {
+            std::env::temp_dir().join("porkpie-ssh-agent.sock")
+        };
+        println!("export SSH_AUTH_SOCK={}", socket_path.display());
+    }
+
+    #[cfg(windows)]
+    {
+        println!("# No environment variable required.");
+        println!("# Microsoft OpenSSH uses the default named pipe:");
+        println!("#   {}", porkpie_agent::windows_pipe::DEFAULT_PIPE_NAME);
+        println!("#");
+        println!("# If the built-in Windows OpenSSH Authentication Agent service is running,");
+        println!("# disable it first:");
+        println!("#   Stop-Service ssh-agent");
+        println!("#   Set-Service ssh-agent -StartupType Disabled");
+        println!("#");
+        println!("# Git for Windows can be forced to use Microsoft OpenSSH:");
+        println!("#   git config --global core.sshCommand \"C:/Windows/System32/OpenSSH/ssh.exe\"");
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        println!("SSH agent is not supported on this platform.");
+    }
+
+    Ok(())
+}
+
+/// Check whether the agent appears to be running.
+pub async fn run_agent_status(_context: &CommandContext) -> Result<()> {
+    #[cfg(unix)]
+    {
+        let socket_path = if let Ok(path) = std::env::var("PORKPIE_SSH_AGENT_SOCK") {
+            std::path::PathBuf::from(path)
+        } else {
+            std::env::temp_dir().join("porkpie-ssh-agent.sock")
+        };
+        if socket_path.exists() {
+            println!("Agent socket exists: {}", socket_path.display());
+            println!("Try: ssh-add -L");
+        } else {
+            println!("Agent socket not found: {}", socket_path.display());
+            println!("Run: porkpie ssh-agent start");
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        use std::fs::metadata;
+        let pipe_name = porkpie_agent::windows_pipe::DEFAULT_PIPE_NAME;
+        // Named pipes don't have a filesystem presence we can stat, but we can
+        // try to open the client side.  If it succeeds, someone is listening.
+        let listening = tokio::runtime::Runtime::new().unwrap().block_on(async {
+            use tokio::net::windows::named_pipe::ClientOptions;
+            ClientOptions::new().open(pipe_name).is_ok()
+        });
+        if listening {
+            println!("Agent pipe is active: {pipe_name}");
+            println!("Try: ssh-add -L");
+        } else {
+            println!("Agent pipe not found: {pipe_name}");
+            println!("Run: porkpie ssh-agent start");
+        }
+
+        match porkpie_agent::is_windows_ssh_agent_service_running() {
+            Ok(true) => {
+                println!("WARNING: The Windows OpenSSH Authentication Agent service is running.");
+                println!("It will conflict with Porkpie.  Disable it:");
+                println!("  Stop-Service ssh-agent");
+                println!("  Set-Service ssh-agent -StartupType Disabled");
+            }
+            Ok(false) => {
+                println!("Windows OpenSSH Authentication Agent service is not running.");
+            }
+            Err(e) => {
+                println!("Could not check Windows ssh-agent service status: {e}");
+            }
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        println!("SSH agent is not supported on this platform.");
+    }
+
+    Ok(())
+}
+
+/// Stop the agent (remove socket / pipe).
+pub async fn run_agent_stop(_context: &CommandContext) -> Result<()> {
+    #[cfg(unix)]
+    {
+        let socket_path = if let Ok(path) = std::env::var("PORKPIE_SSH_AGENT_SOCK") {
+            std::path::PathBuf::from(path)
+        } else {
+            std::env::temp_dir().join("porkpie-ssh-agent.sock")
+        };
+        if socket_path.exists() {
+            std::fs::remove_file(&socket_path)
+                .map_err(|e| CliError::InvalidArgument(format!("cannot remove socket: {e}")))?;
+            println!("Removed agent socket: {}", socket_path.display());
+        } else {
+            println!("Agent socket not found: {}", socket_path.display());
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        println!("On Windows, the agent runs in foreground mode.");
+        println!("Stop it by pressing Ctrl+C in the terminal where it is running.");
+        println!("To prevent the built-in service from restarting, run:");
+        println!("  Set-Service ssh-agent -StartupType Disabled");
+    }
+
+    #[cfg(not(any(unix, windows)))]
     {
         println!("SSH agent is not supported on this platform.");
     }

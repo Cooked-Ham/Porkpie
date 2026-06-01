@@ -3579,6 +3579,7 @@ dependencies = [
  "serde",
  "ssh-key",
  "thiserror 1.0.69",
+ "tokio",
  "zeroize",
 ]
 

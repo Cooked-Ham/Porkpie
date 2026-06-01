@@ -8,11 +8,13 @@ pub mod agent;
 pub mod in_memory_signer;
 pub mod policy;
 pub mod signer;
+pub mod windows_pipe;
 
 pub use agent::{run_unix_socket, stop_unix_socket, Agent, AgentError, AgentIdentity};
 pub use in_memory_signer::Ed25519Signer;
 pub use policy::{HostKeyPolicy, SshKeyIdentity};
 pub use signer::{SignerError, SshSigner};
+pub use windows_pipe::{is_windows_ssh_agent_service_running, run_windows_named_pipe};
 
 #[cfg(test)]
 mod tests {
