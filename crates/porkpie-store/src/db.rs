@@ -175,7 +175,14 @@ mod tests {
     #[tokio::test]
     async fn startup_self_check_fails_on_unopenable_path() {
         // A path whose parent is a file (not a directory) cannot be created.
-        let result = startup_self_check("sqlite:///dev/null/porkpie.db?mode=rwc").await;
+        // Use a temp file as the parent so the directory creation fails.
+        let temp_file = std::env::temp_dir().join("porkpie-test-file-parent");
+        let _ = std::fs::remove_file(&temp_file);
+        std::fs::write(&temp_file, "x").expect("create temp file");
+        let path = temp_file.join("porkpie.db");
+        let url = sqlite_url_from_path(&path);
+        let result = startup_self_check(&url).await;
+        let _ = std::fs::remove_file(&temp_file);
         assert!(
             matches!(
                 result,

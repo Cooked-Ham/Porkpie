@@ -1,0 +1,72 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{0B12338F-685D-4125-B098-F944F26E346E}" Codepage="1252" Language="1033" Manufacturer="Porkpie Contributors" Name="Porkpie" UpgradeCode="{B5E6B8E5-7B4A-4C3D-9E8F-1A2B3C4D5E6F}" Version="0.1.0">
+        <Package Comments="This installer database contains the logic and data required to install Porkpie." Compressed="yes" Description="Porkpie" InstallerVersion="450" Languages="1033" Manufacturer="Porkpie Contributors" Platform="x64" />
+        <CustomAction Id="SetARPINSTALLLOCATION" Property="ARPINSTALLLOCATION" Value="[APPLICATIONFOLDER]" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="DesktopFolder" Name="Desktop">
+                <Component Id="DesktopShortcut" Guid="{A9D3FD9F-0551-5169-B868-31AF3B83F41D}" Win64="yes">
+                    <RegistryValue Id="regCB172E0D528B2250F0B2C344B4E6A916" Root="HKCU" Key="Software\Porkpie" Name="desktop" Value="1" Type="integer" KeyPath="yes" />
+                    <Shortcut Id="ApplicationDesktopShortcut" Directory="DesktopFolder" Name="Porkpie" Description="Porkpie Password Manager" Icon="Porkpie.ico" IconIndex="0" WorkingDirectory="APPLICATIONFOLDER" Advertise="yes" />
+                </Component>
+            </Directory>
+            <Directory Id="ProgramFiles64Folder" Name="PFiles">
+                <Directory Id="APPLICATIONFOLDER" Name="Porkpie">
+                    <Component Id="ApplicationIcon" Guid="{6B33BEFE-4FBC-5DA6-B86C-04716E4C14E4}" Win64="yes">
+                        <File Id="IconFile" Name="Porkpie.ico" KeyPath="yes" DiskId="1" Source="target\wix\extract\File\IconFile" />
+                    </Component>
+                    <Directory Id="Bin" Name="bin">
+                        <Component Id="Path" Guid="{A1B2C3D4-E5F6-7890-1234-567890ABCDEF}" KeyPath="yes" Win64="yes">
+                            <CreateFolder Directory="Bin" />
+                            <Environment Id="PATH" Name="PATH" Value="[Bin]" Separator=";" Action="set" Part="last" System="yes" />
+                        </Component>
+                        <Component Id="binary0" Guid="{0662EB5D-C586-5AF1-8D15-B933649EE9C1}" Win64="yes">
+                            <File Id="exe0" Name="porkpie-desktop.exe" KeyPath="yes" ShortName="6bqixbmw.exe" DiskId="1" Source="target\wix\extract\File\exe0" />
+                        </Component>
+                        <Component Id="binary1" Guid="{EBE72E2A-79B4-5D5B-A261-CFDA3B820B42}" Win64="yes">
+                            <File Id="exe1" Name="porkpie.exe" KeyPath="yes" DiskId="1" Source="target\wix\extract\File\exe1" />
+                        </Component>
+                    </Directory>
+                </Directory>
+            </Directory>
+            <Directory Id="ProgramMenuFolder" Name="Programs">
+                <Directory Id="ApplicationProgramsFolder" Name="Porkpie">
+                    <Component Id="ApplicationShortcut" Guid="{0071BD1D-2BAC-53C3-A1A4-9E4CAA063811}" Win64="yes">
+                        <RegistryValue Id="reg30173DF0CC1BCC1F15C2B13B361D639C" Root="HKCU" Key="Software\Porkpie" Name="installed" Value="1" Type="integer" KeyPath="yes" />
+                        <RemoveFolder Id="ApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+                        <Shortcut Id="ApplicationStartMenuShortcut" Directory="ApplicationProgramsFolder" Name="Porkpie" Description="Porkpie Password Manager" Icon="Porkpie.ico" IconIndex="0" WorkingDirectory="APPLICATIONFOLDER" Advertise="yes" />
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+        <Feature Id="Binaries" Absent="disallow" AllowAdvertise="no" ConfigurableDirectory="APPLICATIONFOLDER" Description="Installs all binaries and shortcuts." Display="expand" Level="1" Title="Application">
+            <ComponentRef Id="binary0" />
+            <ComponentRef Id="binary1" />
+            <ComponentRef Id="ApplicationIcon" />
+            <Feature Id="Environment" Description="Add the install location of the [ProductName] executable to the PATH system environment variable. This allows the [ProductName] executable to be called from any location." Level="1" Title="PATH Environment Variable">
+                <ComponentRef Id="Path" />
+            </Feature>
+            <Feature Id="StartMenuShortcut" Description="Add a shortcut to the Start Menu." Level="1" Title="Start Menu Shortcut">
+                <ComponentRef Id="ApplicationShortcut" />
+            </Feature>
+            <Feature Id="DesktopShortcut" Description="Add a shortcut to the Desktop." Level="1" Title="Desktop Shortcut">
+                <ComponentRef Id="DesktopShortcut" />
+            </Feature>
+        </Feature>
+        <Icon Id="Porkpie.ico" SourceFile="target\wix\extract\Icon\Porkpie.ico" />
+        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed. Setup will now exit." Schedule="afterInstallFinalize" />
+        <Media Id="1" Cabinet="media1.cab" DiskPrompt="CD-ROM #1" EmbedCab="yes" />
+        <Property Id="DiskPrompt" Value="porkpie-desktop Installation" />
+        <Property Id="ALLUSERS" Value="1" />
+        <Property Id="ARPPRODUCTICON" Value="Porkpie.ico" />
+        <Property Id="WIX_DOWNGRADE_DETECTED" Secure="yes" />
+        <Property Id="WIX_UPGRADE_DETECTED" Secure="yes" />
+        <UIRef Id="WixUI_FeatureTree" />
+        <InstallExecuteSequence>
+            <Custom Action="SetARPINSTALLLOCATION" After="CostFinalize" />
+        </InstallExecuteSequence>
+        <InstallUISequence>
+            <Custom Action="SetARPINSTALLLOCATION" After="CostFinalize" />
+        </InstallUISequence>
+    </Product>
+</Wix>

@@ -2,12 +2,15 @@ use crate::components::{button::Button, password_input::PasswordInput, text_inpu
 use crate::state::AppState;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::state::Screen;
+use crate::utils::secret_key_storage;
 use crate::vault_store::{VaultBackend, VaultStoreError};
 use dioxus::prelude::*;
 use porkpie_types::LocalSecretKey;
 
 /// Unlock screen for an existing vault. Loads the list of vaults from
-/// the backend and offers a dropdown selector plus a secret key field.
+/// the backend and offers a dropdown selector plus a password field.
+/// On desktop, the local secret key is retrieved automatically from the
+/// OS credential manager; a manual hex field is shown only as fallback.
 pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
     let backend = cx.props.backend.clone();
     let state_ref = &cx.props.state;
@@ -15,18 +18,22 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
     let name = use_state(cx, String::new);
     let password = use_state(cx, String::new);
     let secret_key_hex = use_state(cx, String::new);
+    let use_manual_key = use_state(cx, || false);
     let submitting = use_state(cx, || false);
     let error = use_state(cx, || None::<String>);
 
     let name_setter = name.clone();
     let password_setter = password.clone();
     let secret_key_setter = secret_key_hex.clone();
+    let use_manual_key_setter = use_manual_key.clone();
+    let use_manual_key_setter_for_render = use_manual_key.clone();
     let submitting_setter = submitting.clone();
     let error_setter = error.clone();
     let submitting_reader = submitting.clone();
     let name_reader = name.clone();
     let password_reader = password.clone();
     let secret_key_reader = secret_key_hex.clone();
+    let use_manual_key_reader = use_manual_key.clone();
 
     let submit = move |_| {
         if *submitting_reader.get() {
@@ -35,6 +42,7 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
         let raw_name = name_reader.get().clone();
         let raw_password = password_reader.get().clone();
         let raw_secret_key = secret_key_reader.get().clone();
+        let manual = *use_manual_key_reader.get();
 
         if raw_name.trim().is_empty() {
             error_setter.set(Some("Select or enter a vault name".to_string()));
@@ -44,15 +52,36 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
             error_setter.set(Some("Master password is required".to_string()));
             return;
         }
-        if raw_secret_key.trim().is_empty() {
-            error_setter.set(Some("Local secret key is required".to_string()));
-            return;
-        }
 
-        let secret_key = match LocalSecretKey::from_hex(&raw_secret_key) {
-            Ok(key) => key,
-            Err(parse_error) => {
-                error_setter.set(Some(format!("Invalid local secret key: {parse_error}")));
+        let secret_key = if manual {
+            if raw_secret_key.trim().is_empty() {
+                error_setter.set(Some("Local secret key is required".to_string()));
+                return;
+            }
+            match LocalSecretKey::from_hex(&raw_secret_key) {
+                Ok(key) => key,
+                Err(parse_error) => {
+                    error_setter.set(Some(format!("Invalid local secret key: {parse_error}")));
+                    return;
+                }
+            }
+        } else {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                match secret_key_storage::get_secret_key(&raw_name) {
+                    Some(key) => key,
+                    None => {
+                        error_setter.set(Some(
+                            "No secret key found in credential manager for this vault. Enter it manually or use the recovery kit.".to_string(),
+                        ));
+                        use_manual_key_setter.set(true);
+                        return;
+                    }
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                error_setter.set(Some("Local secret key is required in the browser".to_string()));
                 return;
             }
         };
@@ -127,13 +156,14 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
 
     let vault_options = state_ref.with(|state| state.vaults.clone());
     let default_value = name.get().clone();
+    let manual = *use_manual_key.get();
 
     cx.render(rsx! {
         section { class: "screen", id: "unlock",
             div { class: "screen-header",
                 p { class: "eyebrow", "Locked" }
                 h1 { "Unlock vault" }
-                p { class: "muted", "Choose a vault, then provide the master password and the local secret key. Both are required." }
+                p { class: "muted", "Choose a vault and enter your master password. The local secret key is retrieved automatically from this device." }
             }
             form { class: "panel form-grid",
                 if !vault_options.is_empty() {
@@ -169,13 +199,17 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
                     on_input: move |value: String| password_setter.set(value),
                     auto_complete: "current-password"
                 }
-                TextInput {
-                    label: "Local secret key (hex)",
-                    value: "{secret_key_hex.get()}",
-                    placeholder: "64 hex characters",
-                    on_input: move |value: String| secret_key_setter.set(value),
-                    auto_complete: "off",
-                    input_type: "password"
+                if manual {
+                    rsx! {
+                        TextInput {
+                            label: "Local secret key (hex)",
+                            value: "{secret_key_hex.get()}",
+                            placeholder: "64 hex characters",
+                            on_input: move |value: String| secret_key_setter.set(value),
+                            auto_complete: "off",
+                            input_type: "password"
+                        }
+                    }
                 }
                 error.get().as_ref().map(|err| rsx! {
                     div { class: "inline-error", role: "alert", "{err}" }
@@ -186,6 +220,15 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
                         variant: "btn-primary",
                         disabled: *submitting.get(),
                         on_click: submit
+                    }
+                    if !manual {
+                        rsx! {
+                            Button {
+                                label: "Enter key manually",
+                                variant: "btn-secondary",
+                                on_click: move |_| use_manual_key_setter_for_render.set(true)
+                            }
+                        }
                     }
                     a { class: "btn btn-secondary", href: "#onboarding", "Create new" }
                 }

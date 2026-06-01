@@ -16,19 +16,10 @@ use launch_config::LaunchConfig;
 fn main() {
     let config = LaunchConfig::load();
 
-    // Run a startup self-check on the database before handing off to the UI.
-    // On failure, print a helpful error to stderr and exit with a non-zero
-    // code so the user knows the exact category of the problem.
-    let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
-    runtime.block_on(async {
-        if let Err(error) = porkpie_store::startup_self_check(&config.database_url).await {
-            eprintln!("porkpie-desktop: database startup failed: {error}");
-            eprintln!("  database_url: {}", config.database_url);
-            eprintln!("  HINT: override the path with PORKPIE_DATABASE_URL or PORKPIE_DATA_DIR");
-            std::process::exit(1);
-        }
-    });
-
+    // The database startup check is handled by the UI so that failures
+    // surface as a friendly GUI error screen instead of a terminal message.
+    // The UI initial_load future connects to SQLite and routes to the
+    // DbError screen on failure, offering Retry / Open Data Folder / Reset.
     let dioxus_config = config.into_dioxus_config();
     dioxus_desktop::launch_cfg(porkpie_ui::App, dioxus_config);
 }

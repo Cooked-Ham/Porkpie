@@ -1,3 +1,4 @@
+pub mod db_error;
 pub mod detail;
 pub mod import_export;
 pub mod list;
@@ -6,6 +7,7 @@ pub mod password_gen;
 pub mod settings;
 pub mod unlock;
 
+pub use db_error::DbErrorPage;
 pub use detail::ItemDetailPage;
 pub use import_export::ImportExportPage;
 pub use list::ItemListPage;

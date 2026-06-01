@@ -2,6 +2,14 @@
 name = "porkpie-desktop"
 version = "0.1.0"
 edition = "2021"
+authors = ["Porkpie Contributors"]
+license = "MIT"
+
+[package.metadata.wix]
+upgrade-guid = "B5E6B8E5-7B4A-4C3D-9E8F-1A2B3C4D5E6F"
+path-guid = "A1B2C3D4-E5F6-7890-1234-567890ABCDEF"
+license = false
+eula = false
 
 [dependencies]
 porkpie-ui = { path = "../../crates/porkpie-ui" }
@@ -9,6 +17,11 @@ porkpie-store = { path = "../../crates/porkpie-store" }
 dioxus = "0.4"
 dioxus-desktop = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[dev-dependencies]
+tempfile = "3"
+porkpie-types = { path = "../../crates/porkpie-types" }
+porkpie-core = { path = "../../crates/porkpie-core" }
 
 [[bin]]
 name = "porkpie-desktop"

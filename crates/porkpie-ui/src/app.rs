@@ -1,6 +1,6 @@
 use crate::pages::{
-    ImportExportPage, ItemDetailPage, ItemListPage, OnboardingPage, PasswordGeneratorPage,
-    SettingsPage, UnlockPage,
+    DbErrorPage, ImportExportPage, ItemDetailPage, ItemListPage, OnboardingPage,
+    PasswordGeneratorPage, SettingsPage, UnlockPage,
 };
 use crate::state::AppState;
 use crate::state::Screen;
@@ -99,7 +99,7 @@ h2 { font-size: 1rem; margin-bottom: 6px; }
 /// not have access to SQLite, so this helper only exists on the
 /// desktop / native build.
 #[cfg(not(target_arch = "wasm32"))]
-fn database_url_from_env() -> Option<String> {
+pub(super) fn database_url_from_env() -> Option<String> {
     std::env::var("PORKPIE_DATABASE_URL").ok()
 }
 
@@ -124,18 +124,24 @@ pub fn App(cx: Scope) -> Element {
     let screen = state_for_render.with(|s| s.screen.clone());
     let theme = state_for_render.with(|s| s.settings.theme.to_string());
 
+    let state_for_nav = state_for_render.clone();
+
     cx.render(rsx! {
         style { "{APP_CSS}" }
         div { class: "app-shell", "data-theme": "{theme}",
             aside { class: "sidebar",
                 div { class: "brand", "Porkpie" }
                 nav { class: "nav", "aria-label": "Primary",
-                    NavLink { state: state_for_render.clone(), target: Screen::Onboarding, label: "Onboarding".to_string() }
-                    NavLink { state: state_for_render.clone(), target: Screen::Unlock, label: "Unlock".to_string() }
-                    NavLink { state: state_for_render.clone(), target: Screen::List, label: "Items".to_string() }
-                    NavLink { state: state_for_render.clone(), target: Screen::PasswordGenerator, label: "Generator".to_string() }
-                    NavLink { state: state_for_render.clone(), target: Screen::ImportExport, label: "Import/export".to_string() }
-                    NavLink { state: state_for_render.clone(), target: Screen::Settings, label: "Settings".to_string() }
+                    if !matches!(screen, Screen::DbError) {
+                        rsx! {
+                            NavLink { state: state_for_nav.clone(), target: Screen::Onboarding, label: "Onboarding".to_string() }
+                            NavLink { state: state_for_nav.clone(), target: Screen::Unlock, label: "Unlock".to_string() }
+                            NavLink { state: state_for_nav.clone(), target: Screen::List, label: "Items".to_string() }
+                            NavLink { state: state_for_nav.clone(), target: Screen::PasswordGenerator, label: "Generator".to_string() }
+                            NavLink { state: state_for_nav.clone(), target: Screen::ImportExport, label: "Import/export".to_string() }
+                            NavLink { state: state_for_nav.clone(), target: Screen::Settings, label: "Settings".to_string() }
+                        }
+                    }
                 }
             }
             main { class: "workspace",
@@ -148,6 +154,7 @@ pub fn App(cx: Scope) -> Element {
                     Screen::PasswordGenerator => rsx!(PasswordGeneratorPage { state: state_for_render.clone() }),
                     Screen::ImportExport => rsx!(ImportExportPage { state: state_for_render.clone(), backend: backend_for_render.clone() }),
                     Screen::Settings => rsx!(SettingsPage { state: state_for_render.clone() }),
+                    Screen::DbError => rsx!(DbErrorPage { state: state_for_render.clone(), backend: backend_for_render.clone() }),
                 }
             }
         }
@@ -183,7 +190,8 @@ async fn initial_load(backend_ref: UseRef<VaultBackend>, state_ref: UseRef<AppSt
             Err(error) => {
                 state_ref.with_mut(|state| {
                     state.error = Some(format!("Database error: {error}"));
-                    state.screen = Screen::Onboarding;
+                    state.db_path = Some(url);
+                    state.screen = Screen::DbError;
                 });
                 return;
             }
@@ -203,7 +211,8 @@ async fn initial_load(backend_ref: UseRef<VaultBackend>, state_ref: UseRef<AppSt
             Err(error) => {
                 state_ref.with_mut(|state| {
                     state.error = Some(format!("Failed to list vaults: {error}"));
-                    state.screen = Screen::Onboarding;
+                    state.db_path = Some(url);
+                    state.screen = Screen::DbError;
                 });
             }
         }

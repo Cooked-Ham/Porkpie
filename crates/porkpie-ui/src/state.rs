@@ -15,6 +15,7 @@ pub enum Screen {
     PasswordGenerator,
     ImportExport,
     Settings,
+    DbError,
 }
 
 /// UI theme preference.
@@ -138,6 +139,8 @@ pub struct AppState {
     pub toast: Option<String>,
     pub error: Option<String>,
     pub status: Option<String>,
+    /// Path to the database file, shown on the DB error screen.
+    pub db_path: Option<String>,
 }
 
 impl Default for AppState {
@@ -156,6 +159,7 @@ impl Default for AppState {
             toast: None,
             error: None,
             status: None,
+            db_path: None,
         }
     }
 }
