@@ -1,6 +1,7 @@
 use clap::{CommandFactory, Parser};
-use porkpie_cli::{BackupCommands, Cli, Commands, ItemCommands, SshCommands};
-use porkpie_types::VaultId;
+use porkpie_cli::secret_store::SecretStore;
+use porkpie_cli::{BackupCommands, Cli, Commands, ItemCommands, RecoveryCommands, SshCommands};
+use porkpie_types::{LocalSecretKey, VaultId};
 
 #[test]
 fn help_text_renders() {
@@ -359,4 +360,120 @@ fn invalid_sync_strategy_is_rejected_at_runtime() {
             ..
         } if strategy == "not-a-strategy"
     ));
+}
+
+#[test]
+fn parses_recovery_verify_command() {
+    let cli = Cli::parse_from(["porkpie", "recovery", "verify", "--kit", "kit.json"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Recovery(RecoveryCommands::Verify { kit }) if kit == std::path::Path::new("kit.json")
+    ));
+}
+
+#[test]
+fn parses_recovery_restore_command() {
+    let cli = Cli::parse_from([
+        "porkpie",
+        "recovery",
+        "restore",
+        "--kit",
+        "kit.json",
+        "--backup",
+        "backup.json",
+    ]);
+    assert!(matches!(
+        cli.command,
+        Commands::Recovery(RecoveryCommands::Restore { kit, backup })
+            if kit == std::path::Path::new("kit.json") && backup == std::path::Path::new("backup.json")
+    ));
+}
+
+#[test]
+fn rotate_local_secret_keychain_regression_new_key_survives() {
+    let vault_id = VaultId::new();
+    let old_key = LocalSecretKey::generate();
+    let new_key = LocalSecretKey::generate();
+    let fake = porkpie_cli::secret_store::FakeKeychain::new();
+
+    // Simulate initial unlock storing old key.
+    fake.store_local_secret_key(&vault_id, &old_key).unwrap();
+    let loaded = fake.load_local_secret_key(&vault_id).unwrap().unwrap();
+    assert_eq!(loaded.to_hex(), old_key.to_hex());
+
+    // Simulate rotation: store new key (overwrites old, same vault_id slot).
+    fake.store_local_secret_key(&vault_id, &new_key).unwrap();
+    let loaded = fake.load_local_secret_key(&vault_id).unwrap().unwrap();
+    assert_eq!(
+        loaded.to_hex(),
+        new_key.to_hex(),
+        "new key must survive store"
+    );
+
+    // The bug was deleting by vault_id after storing the new key.
+    // Do NOT delete here — verify the new key is still present.
+    let loaded = fake.load_local_secret_key(&vault_id).unwrap();
+    assert!(
+        loaded.is_some(),
+        "new key must still be in keychain after rotation"
+    );
+    assert_eq!(loaded.unwrap().to_hex(), new_key.to_hex());
+}
+
+#[test]
+fn rotate_local_secret_keychain_old_key_is_replaced() {
+    let vault_id = VaultId::new();
+    let old_key = LocalSecretKey::generate();
+    let new_key = LocalSecretKey::generate();
+    let fake = porkpie_cli::secret_store::FakeKeychain::new();
+
+    fake.store_local_secret_key(&vault_id, &old_key).unwrap();
+    fake.store_local_secret_key(&vault_id, &new_key).unwrap();
+
+    let loaded = fake.load_local_secret_key(&vault_id).unwrap().unwrap();
+    assert_eq!(loaded.to_hex(), new_key.to_hex());
+    assert_ne!(
+        loaded.to_hex(),
+        old_key.to_hex(),
+        "old key must be replaced"
+    );
+}
+
+#[test]
+fn rotate_local_secret_keychain_failure_aborts() {
+    use porkpie_cli::secret_store::SecretStore;
+
+    struct FailingStore;
+    impl SecretStore for FailingStore {
+        fn store_local_secret_key(
+            &self,
+            _vault_id: &VaultId,
+            _key: &LocalSecretKey,
+        ) -> porkpie_cli::secret_store::Result<()> {
+            Err(porkpie_cli::secret_store::SecretStoreError::Unavailable(
+                "test failure".to_string(),
+            ))
+        }
+        fn load_local_secret_key(
+            &self,
+            _vault_id: &VaultId,
+        ) -> porkpie_cli::secret_store::Result<Option<LocalSecretKey>> {
+            Ok(None)
+        }
+        fn delete_local_secret_key(
+            &self,
+            _vault_id: &VaultId,
+        ) -> porkpie_cli::secret_store::Result<()> {
+            Ok(())
+        }
+    }
+
+    let vault_id = VaultId::new();
+    let new_key = LocalSecretKey::generate();
+    let store = FailingStore;
+
+    // Keychain write must fail.
+    assert!(store.store_local_secret_key(&vault_id, &new_key).is_err());
+    // Keychain must not contain the new key.
+    assert!(store.load_local_secret_key(&vault_id).unwrap().is_none());
 }

@@ -1,4 +1,5 @@
 use crate::{
+    auth::CurrentApiKeyHash,
     db,
     errors::{ApiError, Result},
     models::{
@@ -7,7 +8,7 @@ use crate::{
     },
     AppState,
 };
-use axum::{extract::State, Json};
+use axum::{extract::State, Extension, Json};
 use porkpie_sync::{SyncRequest, SyncResponse};
 
 /// Return server liveness data.
@@ -44,6 +45,9 @@ pub async fn sync_register(
         &request.salt,
         &request.master_key_wrapped,
         request.created_at,
+        request.kdf_time_cost,
+        request.kdf_mem_cost,
+        request.kdf_parallelism,
     )
     .await?;
 
@@ -104,9 +108,9 @@ pub async fn sync_push(
 /// Admin: add a new API key.
 ///
 /// The request body must contain the new API key in plaintext.
-/// The server hashes it and stores the hash for future validation.
-/// The plaintext key is returned ONLY ONCE in this response.
+/// The server hashes it and stores only the hash for future validation.
 /// The plaintext key is never stored.
+/// The client must save the plaintext key; it cannot be recovered.
 pub async fn admin_add_api_key(
     State(state): State<AppState>,
     Json(request): Json<serde_json::Value>,
@@ -116,13 +120,12 @@ pub async fn admin_add_api_key(
         .and_then(|v| v.as_str())
         .ok_or(ApiError::BadRequest("missing api_key".to_string()))?;
     let label = request.get("label").and_then(|v| v.as_str()).unwrap_or("");
-    let (key_id, key_hash) = db::upsert_api_key(&state.pool, api_key, label).await?;
+    let (key_id, _key_hash) = db::upsert_api_key(&state.pool, api_key, label).await?;
     Ok(Json(serde_json::json!({
         "ok": true,
         "key_id": key_id,
-        "key_hash": key_hash,
         "label": label,
-        "message": "API key added. Store the plaintext key securely; it cannot be recovered. This is the only time the plaintext key will be shown."
+        "message": "API key added. The server stores only the hash. Save the plaintext key now; it cannot be recovered."
     })))
 }
 
@@ -130,8 +133,10 @@ pub async fn admin_add_api_key(
 ///
 /// The request body must contain the key_id to revoke.
 /// Prevents revoking the last active key unless force=true.
+/// Also prevents self-revoke (an admin key cannot revoke itself).
 pub async fn admin_revoke_api_key(
     State(state): State<AppState>,
+    Extension(current_hash): Extension<CurrentApiKeyHash>,
     Json(request): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>> {
     let key_id = request
@@ -154,6 +159,13 @@ pub async fn admin_revoke_api_key(
     }
 
     let key_hash = db::revoke_api_key_by_id(&state.pool, key_id).await?;
+
+    if current_hash.0 == key_hash {
+        return Err(ApiError::BadRequest(
+            "Cannot revoke the API key currently in use.".to_string(),
+        ));
+    }
+
     Ok(Json(serde_json::json!({
         "ok": true,
         "key_id": key_id,

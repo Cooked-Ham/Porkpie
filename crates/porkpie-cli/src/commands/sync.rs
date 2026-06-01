@@ -53,6 +53,9 @@ pub async fn run(
             salt: vault_data.salt.to_vec(),
             master_key_wrapped: vault_data.master_key_wrapped.clone(),
             created_at: vault_data.created_at.to_millis(),
+            kdf_time_cost: vault_data.kdf_params.time_cost,
+            kdf_mem_cost: vault_data.kdf_params.mem_cost,
+            kdf_parallelism: vault_data.kdf_params.parallelism,
         })
         .send()
         .await?;
@@ -256,6 +259,9 @@ struct SyncRegisterRequest {
     salt: Vec<u8>,
     master_key_wrapped: Vec<u8>,
     created_at: i64,
+    kdf_time_cost: u32,
+    kdf_mem_cost: u32,
+    kdf_parallelism: u32,
 }
 
 #[derive(Deserialize)]

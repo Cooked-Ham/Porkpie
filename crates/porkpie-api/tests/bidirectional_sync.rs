@@ -51,6 +51,9 @@ fn register_payload(vault_id: &str) -> SyncRegisterRequest {
         salt: vec![0xab; 32],
         master_key_wrapped: vec![0xcd; 48],
         created_at: 1000,
+        kdf_time_cost: 2,
+        kdf_mem_cost: 19456,
+        kdf_parallelism: 1,
     }
 }
 

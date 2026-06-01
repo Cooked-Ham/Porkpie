@@ -1,6 +1,9 @@
 use crate::commands::CommandContext;
 use crate::errors::{CliError, Result};
+use porkpie_import::{import_backup, read_backup_file, BackupImportMode, BackupImportResult};
+use porkpie_store::{load_items, store_item, store_vault};
 use porkpie_types::LocalSecretKey;
+use std::collections::HashSet;
 use std::path::Path;
 
 /// Verify a recovery kit structure without printing secrets.
@@ -42,17 +45,97 @@ pub async fn verify(_context: &CommandContext, kit_path: &Path) -> Result<()> {
 
 /// Restore a vault from a recovery kit and encrypted backup.
 ///
-/// NOT YET IMPLEMENTED. This command is a scaffold and will be completed
-/// in a future release.
-pub async fn restore(
-    _context: &CommandContext,
-    _kit_path: &Path,
-    _backup_path: &Path,
-) -> Result<()> {
-    println!("porkpie recovery restore is not implemented yet.");
-    println!("To restore a vault manually:");
-    println!("  1. porkpie init <new-vault-name>");
-    println!("  2. Use the recovery kit's local secret key when unlocking.");
-    println!("  3. porkpie import <backup-file>");
+/// Reads the recovery kit for the vault_id and local_secret_key, then reads
+/// the encrypted backup file, prompts for the master password, decrypts the
+/// backup, and stores the vault + items in the local database.
+pub async fn restore(context: &CommandContext, kit_path: &Path, backup_path: &Path) -> Result<()> {
+    // Read the recovery kit.
+    let kit_contents = std::fs::read_to_string(kit_path).map_err(CliError::Io)?;
+    let kit: serde_json::Value = serde_json::from_str(&kit_contents)
+        .map_err(|e| CliError::InvalidArgument(format!("invalid recovery kit JSON: {e}")))?;
+
+    let vault_id = kit["vault_id"]
+        .as_str()
+        .ok_or_else(|| CliError::InvalidArgument("missing vault_id in recovery kit".to_string()))?;
+    let secret_key_hex = kit["local_secret_key"].as_str().ok_or_else(|| {
+        CliError::InvalidArgument("missing local_secret_key in recovery kit".to_string())
+    })?;
+    let secret_key = LocalSecretKey::from_hex(secret_key_hex).map_err(|e| {
+        CliError::InvalidArgument(format!("invalid local_secret_key in recovery kit: {e}"))
+    })?;
+
+    // Read the encrypted backup.
+    let backup = read_backup_file(backup_path)
+        .map_err(|e| CliError::InvalidArgument(format!("failed to read backup: {e}")))?;
+
+    // Verify the backup vault_id matches the recovery kit.
+    let backup_vault_id = backup.vault.id.to_string();
+    if backup_vault_id != vault_id {
+        return Err(CliError::InvalidArgument(format!(
+            "backup vault_id ({backup_vault_id}) does not match recovery kit vault_id ({vault_id})"
+        )));
+    }
+
+    // Prompt for the master password.
+    println!(
+        "Restoring vault {}. Enter the master password for this backup:",
+        vault_id
+    );
+    let password = crate::interactive::prompt_master_password()?;
+
+    // Get existing item IDs from the database (empty set if vault doesn't exist yet).
+    let pool = context.pool().await?;
+    let existing_item_ids = match load_items(&pool, &backup.vault.id).await {
+        Ok(items) => items
+            .into_iter()
+            .map(|(item_id, _)| item_id.to_string())
+            .collect(),
+        Err(porkpie_store::StoreError::VaultNotFound(_)) => HashSet::new(),
+        Err(error) => return Err(CliError::Store(error)),
+    };
+
+    // Decrypt and import the backup.
+    let BackupImportResult {
+        vault,
+        items,
+        imported,
+        skipped,
+    } = import_backup(
+        backup,
+        &password,
+        &secret_key,
+        &existing_item_ids,
+        BackupImportMode::SkipDuplicates,
+    )
+    .map_err(|e| CliError::InvalidArgument(format!("failed to decrypt backup: {e}")))?;
+
+    let vault_id = vault.id;
+    let locked_vault = vault.into_locked_vault();
+
+    // Store the vault and items.
+    store_vault(&pool, &locked_vault)
+        .await
+        .map_err(CliError::Store)?;
+    for item in &items {
+        store_item(&pool, item).await.map_err(CliError::Store)?;
+    }
+
+    // Store the secret key in the keychain.
+    if let Some(store) = crate::secret_store::default_secret_store() {
+        if let Err(e) = store.store_local_secret_key(&vault_id, &secret_key) {
+            eprintln!("Warning: could not store secret key in OS keychain: {e}");
+            eprintln!("You will need to provide the secret key manually when unlocking.");
+        }
+    } else {
+        eprintln!("Warning: OS keychain not available. Secret key will not be remembered.");
+    }
+
+    context.save_session(&crate::session::SessionState::unlocked(vault_id))?;
+
+    println!("Vault {} restored successfully.", vault_id);
+    println!("  Imported: {} items", imported);
+    println!("  Skipped: {} duplicates", skipped);
+    println!("  Secret key: stored in OS keychain (or manual entry required)");
+    println!("Next: porkpie unlock");
     Ok(())
 }

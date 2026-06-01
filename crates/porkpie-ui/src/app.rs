@@ -20,6 +20,17 @@ const APP_CSS: &str = r#"
   --accent-ink: #071612;
   --danger: #ff6b6b;
 }
+[data-theme="light"] {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #eef1f4;
+  --text: #171a1f;
+  --muted: #526170;
+  --line: #d9e0e7;
+  --accent: #067a63;
+  --accent-ink: #ffffff;
+}
+[data-theme="light"] .sidebar { background: #ffffff; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
 a { color: inherit; text-decoration: none; }
@@ -111,10 +122,11 @@ pub fn App(cx: Scope) -> Element {
     let backend_for_render = backend.clone();
 
     let screen = state_for_render.with(|s| s.screen.clone());
+    let theme = state_for_render.with(|s| s.settings.theme.to_string());
 
     cx.render(rsx! {
         style { "{APP_CSS}" }
-        div { class: "app-shell",
+        div { class: "app-shell", "data-theme": "{theme}",
             aside { class: "sidebar",
                 div { class: "brand", "Porkpie" }
                 nav { class: "nav", "aria-label": "Primary",
