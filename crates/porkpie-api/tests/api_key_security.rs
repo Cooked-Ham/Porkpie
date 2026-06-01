@@ -70,23 +70,28 @@ async fn different_api_keys_produce_different_hashes() {
 
 #[test]
 fn config_rejects_missing_api_key_env() {
-    // Remove API_KEY from the environment if it exists.
-    let previous = std::env::var("API_KEY").ok();
+    // Remove both API_KEY variants from the environment if they exist.
+    let previous_api_key = std::env::var("API_KEY").ok();
+    let previous_porkpie_api_key = std::env::var("PORKPIE_API_KEY").ok();
     std::env::remove_var("API_KEY");
+    std::env::remove_var("PORKPIE_API_KEY");
 
     let result = Config::from_env();
     assert!(
         result.is_err(),
-        "Config must fail when API_KEY environment variable is missing"
+        "Config must fail when API_KEY / PORKPIE_API_KEY environment variable is missing"
     );
     let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("API_KEY"),
-        "error should mention API_KEY: {err}"
+        err.contains("PORKPIE_API_KEY"),
+        "error should mention PORKPIE_API_KEY: {err}"
     );
 
-    // Restore the previous value so other tests are not affected.
-    if let Some(value) = previous {
+    // Restore the previous values so other tests are not affected.
+    if let Some(value) = previous_api_key {
         std::env::set_var("API_KEY", value);
+    }
+    if let Some(value) = previous_porkpie_api_key {
+        std::env::set_var("PORKPIE_API_KEY", value);
     }
 }

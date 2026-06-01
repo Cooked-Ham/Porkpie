@@ -17,12 +17,13 @@ Porkpie is a foundational Rust prototype, not safe for real credentials yet.
 - **apps/desktop (Phase 07)**: The desktop shell is now a real `porkpie-desktop` binary that calls `dioxus_desktop::launch_cfg` with a `LaunchConfig` that derives a window title, width, height, and SQLite URL from environment variables. The default SQLite location is the platform data directory (`%APPDATA%\Porkpie\porkpie.db` on Windows, `~/Library/Application Support/Porkpie/porkpie.db` on macOS, `$XDG_DATA_HOME/porkpie/porkpie.db` on Linux). `cargo run -p porkpie-desktop` produces a working window that renders the shared UI on top of the real SQLite-backed vault store.
 - **apps/web (Phase 07)**: The web shell is now a real `porkpie-web` binary that calls `dioxus_web::launch_cfg` with a `LaunchConfig` driven by `PORKPIE_WEB_ROOT`. The shell ships an `apps/web/index.html` template that loads the `wasm-bindgen`-produced `porkpie-web.js` as an ES module and a `apps/web/build-web.ps1` script that compiles the binary for `wasm32-unknown-unknown`, runs `wasm-bindgen --target web`, and copies the `index.html` template into a `dist-web/` directory alongside the snippets. The release WASM artifact is ~815 KB; the debug artifact is ~3.5 MB. The script also has a `-Serve` mode that boots a small static HTTP server on the bundle for end-to-end smoke tests, and a `-Clean` flag that wipes the output. A `test-web.ps1` script fetches `/index.html`, `/porkpie-web.js`, `/porkpie-web_bg.wasm`, and the wasm-bindgen snippet over HTTP and asserts the bundle is well-formed. `cargo build -p porkpie-web --target wasm32-unknown-unknown` succeeds with no warnings.
 - **porkpie-agent (Phase 09)**: The `porkpie-agent` crate is no longer a scheduling stub. It now provides a real `SshSigner` trait (`algorithm`, `public_key_bytes`, `sign`), host/key policy structs (`HostKeyPolicy`, `SshKeyIdentity`), and an `Ed25519Signer` in-memory implementation backed by `ed25519-dalek`. The signer trait is tested with real Ed25519 signing and verification. The `porkpie ssh-agent` CLI command prints an honest status message: `OpenSSH agent socket/named-pipe integration is not implemented yet.` The SSH key item type (`SSHKeySecret`) now supports `comment` and `allowed_hosts` fields in addition to `name`, `public_key`, `private_key`, and `passphrase`. Private keys are encrypted at rest via the vault's XChaCha20Poly1305 encryption. The `porkpie ssh public-key <target>` command prints only the public key and never the private key.
+- **Infrastructure Deployment Scaffold**: The `infra/` directory is no longer empty. `infra/caddy/Caddyfile` provides reverse proxy with automatic HTTPS, security headers, and `zstd`/`gzip` encoding. `infra/compose/docker-compose.yml` defines a production stack (`porkpie-server` + `caddy`) with persistent volumes (`porkpie-data`, `caddy-data`, `caddy-config`), healthchecks, and environment variable injection from `.env`. `infra/compose/docker-compose.dev.yml` provides a dev-only server on port 8080 without Caddy. `infra/compose/.env.example` contains placeholder values only (no real secrets). `infra/docker/server.Dockerfile` is a multi-stage build (`rust:1-bookworm` → `debian:bookworm-slim`) that compiles the `porkpie-api` crate (which defines the `porkpie-server` binary) and produces a minimal runtime image with `ca-certificates` and `sqlite3`. The server runs as the unprivileged `porkpie` user and persists data to `/data`. The server fails startup if `PORKPIE_API_KEY` is missing. The `--healthcheck` flag attempts a TCP connection to the server's own bind address and exits 0 if reachable, 1 otherwise.
+- **Phase 12: Final Hostile QA Pass**: A comprehensive audit of the repository was performed. The `docs/AUDIT_REPORT.md` documents the findings. The workspace passes all automated validation (138 tests, clean Clippy, release build). No critical security failures were found in the current implementation. All `unwrap()` and `expect()` calls are confined to test files. No `TODO`/`FIXME`/`dev-key-change-in-production` exist in production code. No `localStorage`/`sessionStorage` usage. No Electron/React/TypeScript/Vite. The `println!` calls in CLI commands are status messages only (except `porkpie read` which prints secrets by design). The completion gate was updated to reflect the actual status: **7 of 9 gates pass**, 2 partially pass (Security: 8/10, Desktop/Web: 2/3). The project remains labeled a prototype. The remaining blockers are: no external security audit, web shell lacks real vault storage, and memory zeroization is not verified by tests.
 
 ## Partial / Scaffolded
 
 - **porkpie-agent**: The `SshSigner` trait, `Ed25519Signer`, and policy structs are real and tested, but OpenSSH agent socket/named-pipe integration is not yet implemented. There is no background worker, no sync scheduler, and no runtime agent loop.
-- **apps/server**: Re-exports `porkpie_api::{build_router, AppState}`. The actual server binary lives in `crates/porkpie-api`. A standalone launch command is not yet wired in this crate.
-- **apps/web clipboard + persistence**: The web shell renders the full UI surface but the `VaultBackend::Unavailable` path means the browser shell cannot yet persist items or copy values to the clipboard. The CSS, navigation, and password generator (which is pure Rust) all work in the browser; the data-bearing screens report "not available in this build". A future phase would add a JS-side IndexedDB or `localStorage` bridge that the `VaultBackend::Unavailable` path can be wired through.
+- **apps/server**: Re-exports `porkpie_api::{build_router, AppState}`. The actual server binary lives in `crates/porkpie-api` (binary name `porkpie-server`). The `apps/server` crate is a library-only wrapper.
 
 ## Stubs / Empty Shells
 
@@ -44,8 +45,9 @@ None as of Phase 07. The `apps/desktop` and `apps/web` shell crates are no longe
 
 ### Security Audit
 
-- No security audit or penetration testing has been performed.
-- No hostile QA pass has been done.
+- No external security audit or penetration testing has been performed.
+- A hostile QA pass (Phase 12) was completed on 2026-06-01. The `docs/AUDIT_REPORT.md` documents the findings. No critical security failures were found in production code, but several gaps remain before the project can claim MVP status.
+- The remaining blockers are: (1) no external security audit, (2) web shell lacks real vault storage, (3) memory zeroization is not verified by tests.
 
 ### CLI Secret Exposure
 
@@ -80,11 +82,13 @@ None as of Phase 07. The `apps/desktop` and `apps/web` shell crates are no longe
 ### UI
 
 - **Phase 06 made the UI real**: pages, forms, and dialogs are wired to live vault I/O, not mock data. Decrypted item material is only ever held in `AppState::current_item` (an `Option<DecryptedItem>`) while the user is actively viewing or editing a single item, and is cleared on lock, on screen change, and on logout. The unlock form, onboarding form, import form, and detail form all reflect real state via `use_state`/`use_ref`. The plaintext export is gated by a `Modal` confirm with a destructive button style, but the in-app "I understand" affordance is a soft check rather than a typed-phrase challenge; treat it as UI safety, not as a strong guarantee. Theme switching is wired to state but does not yet re-render the live CSS variables — the Settings page is honest about the gap and tells the user to restart.
-- **Phase 07 launches the UI**: `cargo run -p porkpie-desktop` opens a WebView window that renders the real `porkpie-ui` app on top of a real SQLite-backed vault store. The web shell `cargo build -p porkpie-web --target wasm32-unknown-unknown` followed by `wasm-bindgen --target web` produces a static `dist-web/` bundle (`index.html` + `porkpie-web.js` + `porkpie-web_bg.wasm` + snippets) that any HTTP server can serve. `pwsh apps/web/build-web.ps1 -Serve` automates the build + serve path. The web shell has no SQLite in the browser, so data-bearing flows return `VaultStoreError::Unavailable` and the UI shows "not available in this build" notices — this is the documented web shell mode, not a regression. Real client-side persistence would need an IndexedDB or `localStorage` bridge; that is a separate phase. The web build is Rust-only at runtime: no Electron, no React, no TypeScript, no Vite. The desktop binary is 14.6 MB; the release WASM bundle is 815 KB.
+- **Phase 07 launches the UI**: `cargo run -p porkpie-desktop` opens a WebView2 window (WebKitGTK on Linux, WebKit on macOS). The web shell `cargo build -p porkpie-web --target wasm32-unknown-unknown` followed by `wasm-bindgen --target web` produces a static `dist-web/` bundle (`index.html` + `porkpie-web.js` + `porkpie-web_bg.wasm` + snippets) that any HTTP server can serve. `pwsh apps/web/build-web.ps1 -Serve` automates the build + serve path. The web shell has no SQLite in the browser, so data-bearing flows return `VaultStoreError::Unavailable` and the UI shows "not available in this build" notices — this is the documented web shell mode, not a regression. Real client-side persistence would need an IndexedDB or `localStorage` bridge; that is a separate phase. The web build is Rust-only at runtime: no Electron, no React, no TypeScript, no Vite. The desktop binary is 14.6 MB; the release WASM bundle is 815 KB.
 
 ### API Server
 
-- Docker Compose files reference `API_KEY` via environment variable substitution, but no `.env` file validation or secret generation tooling is provided. Users must manually generate and manage API keys.
+- The server config now reads `PORKPIE_API_KEY`, `PORKPIE_DATABASE_URL`, and `PORKPIE_SERVER_BIND` (with fallbacks to `API_KEY`, `DATABASE_URL`, and `API_PORT` for backward compatibility). The server fails startup if the API key is missing or empty.
+- Docker Compose files use `.env` for environment variable injection. No real secrets are committed — `.env` is gitignored and `.env.example` contains placeholders only.
+- No `.env` file validation or secret generation tooling is provided beyond the placeholder `.env.example`. Users must manually generate and manage API keys.
 
 ## Build Status
 
@@ -95,22 +99,32 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo build --workspace
+cargo build --workspace --release
 ```
 
-108 tests pass across all crates. After Phase 08, **109 tests pass** — the 108 previous tests plus a new `bidirectional_sync_with_conflict_preservation` integration test in `porkpie-api/tests/bidirectional_sync.rs` that exercises the full two-profile sync flow: vault register, push, pull, decrypt, offline edits, conflict detection via HTTP 409, conflict assertion with correct item metadata, and a server-DB plaintext scan proof. After Phase 11, **138 tests pass** — the 132 tests from Phase 10 plus 6 new import/export safety tests: 5 CLI parsing tests (`backup export`, `backup export --output`, `backup import`, `export encrypted default`, `export plaintext --dangerous`), and 1 CSV import encrypted-at-rest test (`csv_imported_secret_is_encrypted_at_rest`). The web shell additionally passes:
+138 tests pass across all crates (0 failures). The web shell additionally passes:
 
 ```bash
 cargo build -p porkpie-web --target wasm32-unknown-unknown
 ```
 
-and the `pwsh apps/web/build-web.ps1` + `pwsh apps/web/test-web.ps1` end-to-end smoke test. After Phase 07, the **workspace tests still pass at 108** — Phase 07 added no new unit tests because the launchers are exercised by `cargo build --target wasm32-unknown-unknown` (for the web shell) and by smoke-running the desktop binary in CI.
+and the `pwsh apps/web/build-web.ps1` + `pwsh apps/web/test-web.ps1` end-to-end smoke test.
+
+### Phase 12 Audit
+
+The `docs/AUDIT_REPORT.md` contains the full hostile QA findings. Key results:
+- **No critical security failures** in production code.
+- **No `unwrap()` / `expect()`** in production source code (all in tests).
+- **No `TODO` / `FIXME` / `dev-key-change-in-production`** in production code.
+- **No fake crypto, no base64 encryption, no hardcoded keys, no static/reused nonces**.
+- **Completion Gate**: 7 of 9 gates pass, 2 partially pass. Blockers: no external security audit, web shell lacks real vault storage, memory zeroization not verified by tests.
 
 ### Test Coverage Highlights
 
 - **Crypto**: 11 tests covering key derivation with secret key, AAD binding (wrong vault ID, wrong item ID, wrong schema version), tampering detection, nonce uniqueness.
 - **Vault lifecycle**: 7 tests covering create, unlock with correct password + secret key, unlock failure with wrong password, unlock failure with wrong secret key, password-alone-cannot-unlock.
 - **Debug redaction**: 10 tests proving fixture secrets never appear in Debug output for all 10 item type variants, Vault, and Item.
-- **API key security**: 3 tests proving raw keys are not stored in the database, hash comparison works, different keys produce different hashes.
+- **API key security**: 4 tests proving raw keys are not stored in the database, hash comparison works, different keys produce different hashes, and config rejects missing API key env.
 - **Plaintext proof**: 2 end-to-end tests scanning raw SQLite + WAL + SHM bytes to verify no fixture secrets (login password, API key, SSH private key, secure note, database password, recovery code) are persisted.
 - **PieUri**: 9 tests covering URI parsing, validation, display, redacted display, and error messages that don't leak values.
 - **Field access**: 7 tests covering get/set operations on Login, APIKey, SSHKey, Database, and Custom item types.
@@ -133,3 +147,14 @@ The Phase 06 acceptance criterion is a working end-to-end flow. The Phase 07 acc
 4. **Web (smoke test)**: `pwsh apps/web/test-web.ps1` boots a static server on a free port in 8765-8800, fetches `/index.html`, `/porkpie-web.js`, `/porkpie-web_bg.wasm`, and the wasm-bindgen snippet, and asserts the bundle is well-formed. Exit code 0 means the bundle is shippable.
 
 The `porkpie-ui` crate's `vault_store.rs` is the single source of truth for vault I/O; pages never call `porkpie_store` or `porkpie_core` directly. Decrypted material is held in `Option<DecryptedItem>` and only while the relevant screen is active. The same `App` component is shared across the desktop shell (real SQLite) and the web shell (browser-side `Unavailable`).
+
+## Self-Host Deployment (Infra Task)
+
+The `infra/` directory contains a complete self-host deployment scaffold:
+
+1. **Production stack**: `docker compose -f infra/compose/docker-compose.yml up -d` starts the server behind Caddy with automatic HTTPS on ports 80/443. The server is exposed internally on port 8080 and reverse-proxied by Caddy. Persistent volumes keep the SQLite database (`porkpie-data`) and Caddy state (`caddy-data`, `caddy-config`) across restarts.
+2. **Development stack**: `docker compose -f infra/compose/docker-compose.dev.yml up -d` starts the server directly on `http://localhost:8080` without Caddy. This is useful for local testing and API development.
+3. **Configuration**: Copy `infra/compose/.env.example` to `infra/compose/.env`, set `PORKPIE_API_KEY` to a long random secret, and set `PORKPIE_PUBLIC_URL` / `PORKPIE_PUBLIC_HOST` to your domain. The server will refuse to start if the API key is missing or set to the placeholder value.
+4. **Security**: The server image runs as an unprivileged `porkpie` user. The `.env` file is gitignored. No real secrets are committed. API keys are hashed with SHA-256 before storage. The Caddyfile includes `X-Content-Type-Options nosniff`, `X-Frame-Options DENY`, and `Referrer-Policy no-referrer` headers.
+5. **Healthcheck**: The Docker healthcheck runs `/usr/local/bin/porkpie-server --healthcheck` every 30 seconds. This attempts a TCP connection to the server's bind address and returns 0 if reachable, 1 otherwise.
+6. **Build**: The Dockerfile uses a multi-stage build. The builder stage compiles the `porkpie-api` crate (which defines the `porkpie-server` binary). The runtime stage is a minimal `debian:bookworm-slim` image with the compiled binary, `ca-certificates`, and `sqlite3`.

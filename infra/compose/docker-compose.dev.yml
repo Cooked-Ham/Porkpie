@@ -1,0 +1,16 @@
+services:
+  porkpie-server:
+    build:
+      context: ../..
+      dockerfile: infra/docker/server.Dockerfile
+    container_name: porkpie-server-dev
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - porkpie-dev-data:/data
+
+volumes:
+  porkpie-dev-data:

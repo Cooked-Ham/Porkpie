@@ -1,0 +1,39 @@
+services:
+  porkpie-server:
+    build:
+      context: ../..
+      dockerfile: infra/docker/server.Dockerfile
+    container_name: porkpie-server
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - porkpie-data:/data
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/porkpie-server", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: caddy:2
+    container_name: porkpie-caddy
+    restart: unless-stopped
+    depends_on:
+      - porkpie-server
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PORKPIE_PUBLIC_HOST: ${PORKPIE_PUBLIC_HOST:-sync.porkpie.love}
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  porkpie-data:
+  caddy-data:
+  caddy-config:

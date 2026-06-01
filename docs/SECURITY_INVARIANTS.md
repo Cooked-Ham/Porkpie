@@ -115,7 +115,7 @@ These thirteen invariants are fundamental to Porkpie's operation. Violating any 
 
 ## 9. Plaintext Export Requires Flag
 
-**The Rule:** Exporting vault items in unencrypted plaintext requires passing an explicit and intentional --dangerous-export-plaintext flag.
+**The Rule:** Exporting vault items in unencrypted plaintext requires passing an explicit and intentional `--dangerous` flag alongside `--format plaintext`.
 
 **Why it matters:** Prevents accidental data spills transparently.
 
