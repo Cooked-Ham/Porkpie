@@ -86,6 +86,8 @@ h2 { font-size: 1rem; margin-bottom: 6px; }
 .empty-state { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; }
 .field-row { display: grid; grid-template-columns: 140px 1fr auto; gap: 12px; align-items: center; }
 .field-row .field-label { color: var(--muted); font-weight: 700; }
+.checkbox-field { display: flex; align-items: center; gap: 10px; }
+.checkbox-field input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); }
 @media (max-width: 780px) {
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -125,30 +127,71 @@ pub fn App(cx: Scope) -> Element {
 
     let screen = state_for_render.with(|s| s.screen.clone());
     let theme = state_for_render.with(|s| s.settings.theme.to_string());
+    let vaults_empty = state_for_render.with(|s| s.vaults.is_empty());
 
     let state_for_nav = state_for_render.clone();
     let screen_for_nav = screen.clone();
 
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let desktop = dioxus_desktop::use_window(cx);
+        let state_for_tray = state_for_render.clone();
+        // Process tray commands.
+        {
+            let mut queue = crate::tray::TRAY_COMMANDS.lock().unwrap();
+            while let Some(cmd) = queue.pop() {
+                match cmd {
+                    crate::tray::TrayCommand::ShowWindow => {
+                        desktop.set_visible(true);
+                        desktop.set_focus();
+                    }
+                    crate::tray::TrayCommand::LockVault => {
+                        state_for_tray.with_mut(|s| s.lock());
+                    }
+                    crate::tray::TrayCommand::Quit => {
+                        std::process::exit(0);
+                    }
+                }
+            }
+        }
+        // Minimize-to-tray: if the window is minimized, hide it completely.
+        if state_for_tray.with(|s| s.settings.minimize_to_tray) && desktop.is_minimized() {
+            desktop.set_visible(false);
+        }
+    }
+
+    let show_sidebar = !(vaults_empty && matches!(screen_for_nav, Screen::Onboarding));
+
     cx.render(rsx! {
         style { "{APP_CSS}" }
-        div { class: "app-shell", "data-theme": "{theme}",
-            aside { class: "sidebar",
-                div { class: "brand", "Porkpie" }
-                nav { class: "nav", "aria-label": "Primary",
-                    if !matches!(screen_for_nav, Screen::DbError) {
-                        let nav_state = state_for_nav.clone();
-                        let nav_state_items = state_for_nav.clone();
-                        rsx! {
-                            NavLink { state: nav_state.clone(), target: Screen::Onboarding, label: "Onboarding".to_string() }
-                            NavLink { state: nav_state.clone(), target: Screen::Unlock, label: "Unlock".to_string() }
-                            if !matches!(screen_for_nav, Screen::Onboarding | Screen::Unlock) {
+        div { class: "app-shell", "data-theme": "{theme}", style: if show_sidebar { "" } else { "grid-template-columns: 1fr" },
+            if show_sidebar {
+                rsx! {
+                    aside { class: "sidebar",
+                        div { class: "brand", "Porkpie" }
+                        nav { class: "nav", "aria-label": "Primary",
+                            if !matches!(screen_for_nav, Screen::DbError) {
+                                let nav_state = state_for_nav.clone();
+                                let nav_state_items = state_for_nav.clone();
+                                let nav_state_onboarding = state_for_nav.clone();
+                                let has_vaults = !vaults_empty;
                                 rsx! {
-                                    NavLink { state: nav_state_items.clone(), target: Screen::List, label: "Items".to_string() }
-                                    NavLink { state: nav_state_items.clone(), target: Screen::PasswordGenerator, label: "Generator".to_string() }
-                                    NavLink { state: nav_state_items.clone(), target: Screen::ImportExport, label: "Import/export".to_string() }
+                                    if !has_vaults {
+                                        rsx! {
+                                            NavLink { state: nav_state_onboarding, target: Screen::Onboarding, label: "Onboarding".to_string() }
+                                        }
+                                    }
+                                    NavLink { state: nav_state.clone(), target: Screen::Unlock, label: "Unlock".to_string() }
+                                    if !matches!(screen_for_nav, Screen::Onboarding | Screen::Unlock) {
+                                        rsx! {
+                                            NavLink { state: nav_state_items.clone(), target: Screen::List, label: "Items".to_string() }
+                                            NavLink { state: nav_state_items.clone(), target: Screen::PasswordGenerator, label: "Generator".to_string() }
+                                            NavLink { state: nav_state_items.clone(), target: Screen::ImportExport, label: "Import/export".to_string() }
+                                        }
+                                    }
+                                    NavLink { state: nav_state, target: Screen::Settings, label: "Settings".to_string() }
                                 }
                             }
-                            NavLink { state: nav_state.clone(), target: Screen::Settings, label: "Settings".to_string() }
                         }
                     }
                 }
@@ -193,6 +236,12 @@ fn NavLink(cx: Scope<NavLinkProps>) -> Element {
 async fn initial_load(backend_ref: UseRef<VaultBackend>, state_ref: UseRef<AppState>) {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        let settings_path = crate::settings_store::default_settings_path();
+        let settings = crate::settings_store::load_or_default(&settings_path);
+        state_ref.with_mut(|state| {
+            state.settings = settings;
+        });
+
         let url = database_url_from_env().unwrap_or_else(|| "sqlite:porkpie.db".to_string());
         let backend = match VaultBackend::connect_sqlite(&url).await {
             Ok(backend) => backend,

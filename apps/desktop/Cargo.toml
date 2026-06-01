@@ -17,6 +17,7 @@ porkpie-store = { path = "../../crates/porkpie-store" }
 dioxus = "0.4"
 dioxus-desktop = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread"] }
+tray-icon = { version = "0.24", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"

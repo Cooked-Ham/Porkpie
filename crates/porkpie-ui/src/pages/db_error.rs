@@ -21,7 +21,8 @@ pub fn DbErrorPage<'a>(cx: Scope<'a, DbErrorPageProps>) -> Element<'a> {
         cx.spawn(async move {
             #[cfg(not(target_arch = "wasm32"))]
             {
-                let url = crate::app::database_url_from_env().unwrap_or_else(|| "sqlite:porkpie.db".to_string());
+                let url = crate::app::database_url_from_env()
+                    .unwrap_or_else(|| "sqlite:porkpie.db".to_string());
                 let backend = match VaultBackend::connect_sqlite(&url).await {
                     Ok(backend) => backend,
                     Err(error) => {
@@ -82,7 +83,8 @@ pub fn DbErrorPage<'a>(cx: Scope<'a, DbErrorPageProps>) -> Element<'a> {
         cx.spawn(async move {
             #[cfg(not(target_arch = "wasm32"))]
             {
-                let url = crate::app::database_url_from_env().unwrap_or_else(|| "sqlite:porkpie.db".to_string());
+                let url = crate::app::database_url_from_env()
+                    .unwrap_or_else(|| "sqlite:porkpie.db".to_string());
                 // Remove the database file if possible
                 let path = url.replace("sqlite://", "").replace("?mode=rwc", "");
                 let std_path = std::path::Path::new(&path);
@@ -108,7 +110,8 @@ pub fn DbErrorPage<'a>(cx: Scope<'a, DbErrorPageProps>) -> Element<'a> {
                     state.error = None;
                     state.db_path = None;
                     state.screen = Screen::Onboarding;
-                    state.status = Some("Local vault reset. Create a new vault to continue.".to_string());
+                    state.status =
+                        Some("Local vault reset. Create a new vault to continue.".to_string());
                 });
             }
         });

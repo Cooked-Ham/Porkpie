@@ -39,6 +39,12 @@ impl std::fmt::Display for Theme {
 pub struct SettingsState {
     pub lock_timeout_minutes: u16,
     pub theme: Theme,
+    /// Keep the vault unlocked after the app restarts (desktop only).
+    pub stay_signed_in: bool,
+    /// Minimize the window to the system tray instead of the taskbar.
+    pub minimize_to_tray: bool,
+    /// Close the window to the system tray instead of quitting the app.
+    pub close_to_tray: bool,
 }
 
 impl Default for SettingsState {
@@ -46,6 +52,9 @@ impl Default for SettingsState {
         Self {
             lock_timeout_minutes: 30,
             theme: Theme::Dark,
+            stay_signed_in: false,
+            minimize_to_tray: false,
+            close_to_tray: false,
         }
     }
 }

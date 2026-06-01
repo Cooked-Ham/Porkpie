@@ -5,7 +5,9 @@
 pub mod app;
 pub mod components;
 pub mod pages;
+pub mod settings_store;
 pub mod state;
+pub mod tray;
 pub mod utils;
 pub mod vault_store;
 

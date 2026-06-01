@@ -61,7 +61,7 @@ impl LaunchConfig {
     }
 
     /// Convert into a Dioxus desktop `Config`.
-    pub fn into_dioxus_config(self) -> dioxus_desktop::Config {
+    pub fn into_dioxus_config(self, close_to_tray: bool) -> dioxus_desktop::Config {
         // The Dioxus desktop backend reads the database URL from
         // the same environment variable the UI uses, so any caller
         // overriding the location through `LaunchConfig` is wired
@@ -71,7 +71,7 @@ impl LaunchConfig {
         }
         let data_dir = platform_data_dir().unwrap_or_else(|| PathBuf::from("."));
         let _ = std::fs::create_dir_all(&data_dir);
-        dioxus_desktop::Config::default()
+        let mut cfg = dioxus_desktop::Config::default()
             .with_data_directory(&data_dir)
             .with_resource_directory(&data_dir)
             .with_window(
@@ -81,7 +81,11 @@ impl LaunchConfig {
                         f64::from(self.window_width),
                         f64::from(self.window_height),
                     )),
-            )
+            );
+        if close_to_tray {
+            cfg = cfg.with_close_behaviour(dioxus_desktop::WindowCloseBehaviour::LastWindowHides);
+        }
+        cfg
     }
 }
 

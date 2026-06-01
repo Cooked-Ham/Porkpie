@@ -122,19 +122,22 @@ pub fn OnboardingPage<'a>(cx: Scope<'a, OnboardingPageProps>) -> Element<'a> {
                     Ok(k) => k,
                     Err(_) => {
                         state_handle.with_mut(|state| {
-                            state.error = Some("Invalid secret key stored during onboarding. Use recovery kit.".to_string());
+                            state.error = Some(
+                                "Invalid secret key stored during onboarding. Use recovery kit."
+                                    .to_string(),
+                            );
                             state.screen = Screen::Unlock;
                         });
                         return;
                     }
                 };
                 let backend = backend_handle.read().clone();
-                match backend.unlock_vault(&summary.name, &p.password, &secret_key).await {
+                match backend
+                    .unlock_vault(&summary.name, &p.password, &secret_key)
+                    .await
+                {
                     Ok(handle) => {
-                        let items = match handle.list_items().await {
-                            Ok(items) => items,
-                            Err(_) => vec![],
-                        };
+                            let items = handle.list_items().await.unwrap_or_default();
                         state_handle.with_mut(|state| {
                             if !state.vaults.iter().any(|v| v.id == summary.id) {
                                 state.vaults.push(summary.clone());
@@ -143,7 +146,9 @@ pub fn OnboardingPage<'a>(cx: Scope<'a, OnboardingPageProps>) -> Element<'a> {
                             state.unlocked_handle = Some(handle);
                             state.items = items;
                             state.screen = Screen::List;
-                            state.status = Some("Vault created and unlocked. Add your first item.".to_string());
+                            state.status = Some(
+                                "Vault created and unlocked. Add your first item.".to_string(),
+                            );
                         });
                     }
                     Err(e) => {
@@ -168,12 +173,18 @@ pub fn OnboardingPage<'a>(cx: Scope<'a, OnboardingPageProps>) -> Element<'a> {
                 let state_for_clip = state_handle.clone();
                 let _ = crate::utils::clipboard::copy_to_clipboard(&json);
                 state_for_clip.with_mut(|s| {
-                    s.toast = Some("Recovery kit copied to clipboard. Paste and save it to a secure file.".to_string());
+                    s.toast = Some(
+                        "Recovery kit copied to clipboard. Paste and save it to a secure file."
+                            .to_string(),
+                    );
                 });
             }
             let _ = filename;
             state_handle.with_mut(|s| {
-                s.toast = Some("Recovery kit copied to clipboard. Paste and save it to a secure file.".to_string());
+                s.toast = Some(
+                    "Recovery kit copied to clipboard. Paste and save it to a secure file."
+                        .to_string(),
+                );
             });
         }
     };

@@ -20,6 +20,7 @@ porkpie-import = { path = "../porkpie-import" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 arboard = "3.6"
+dioxus-desktop = "0.4"
 keyring = "3"
 rfd = "0.14"
 porkpie-import = { path = "../porkpie-import" }
@@ -28,3 +29,4 @@ sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio",
 tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
+tempfile = "3"

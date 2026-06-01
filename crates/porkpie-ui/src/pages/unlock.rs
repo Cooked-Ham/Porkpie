@@ -81,7 +81,9 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
             }
             #[cfg(target_arch = "wasm32")]
             {
-                error_setter.set(Some("Local secret key is required in the browser".to_string()));
+                error_setter.set(Some(
+                    "Local secret key is required in the browser".to_string(),
+                ));
                 return;
             }
         };

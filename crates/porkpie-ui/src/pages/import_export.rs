@@ -56,12 +56,11 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
                                         "Encrypted backup saved to {}",
                                         path.display()
                                     )));
-                                    export_path_handle.set(Some(path.to_string_lossy().to_string()));
+                                    export_path_handle
+                                        .set(Some(path.to_string_lossy().to_string()));
                                 }
                                 Err(e) => {
-                                    error_handle.set(Some(format!(
-                                        "Could not write file: {e}"
-                                    )));
+                                    error_handle.set(Some(format!("Could not write file: {e}")));
                                 }
                             }
                         } else {
@@ -118,12 +117,11 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
                                         "Plaintext backup saved to {}. Handle with care.",
                                         path.display()
                                     )));
-                                    export_path_handle.set(Some(path.to_string_lossy().to_string()));
+                                    export_path_handle
+                                        .set(Some(path.to_string_lossy().to_string()));
                                 }
                                 Err(e) => {
-                                    error_handle.set(Some(format!(
-                                        "Could not write file: {e}"
-                                    )));
+                                    error_handle.set(Some(format!("Could not write file: {e}")));
                                 }
                             }
                         } else {
@@ -249,12 +247,7 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
             }
             #[cfg(target_arch = "wasm32")]
             {
-                let _ = (
-                    state_handle,
-                    backend_handle,
-                    password,
-                    secret_key,
-                );
+                let _ = (state_handle, backend_handle, password, secret_key);
                 error_handle.set(Some("Import is not available in this build".to_string()));
             }
             submitting_handle.set(false);

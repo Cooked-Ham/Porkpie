@@ -4,7 +4,6 @@
 //! SQLite database in a temporary directory to verify the end-to-end desktop
 //! flow.
 
-use porkpie_core::Vault;
 use porkpie_types::{ItemType, LocalSecretKey, LoginSecret};
 use porkpie_ui::vault_store::VaultBackend;
 use std::path::PathBuf;
@@ -29,7 +28,10 @@ fn first_run_no_vault_state() {
     rt.block_on(async {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("porkpie.db");
-        let url = format!("sqlite://{}?mode=rwc", db_path.to_string_lossy().replace('\\', "/"));
+        let url = format!(
+            "sqlite://{}?mode=rwc",
+            db_path.to_string_lossy().replace('\\', "/")
+        );
         let backend = VaultBackend::connect_sqlite(&url).await.expect("connect");
         let summaries = backend.list_vault_summaries().await.expect("list vaults");
         assert!(summaries.is_empty(), "fresh database should have no vaults");
@@ -43,7 +45,10 @@ fn vault_creation_through_backend() {
     rt.block_on(async {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("porkpie.db");
-        let url = format!("sqlite://{}?mode=rwc", db_path.to_string_lossy().replace('\\', "/"));
+        let url = format!(
+            "sqlite://{}?mode=rwc",
+            db_path.to_string_lossy().replace('\\', "/")
+        );
         let backend = VaultBackend::connect_sqlite(&url).await.expect("connect");
 
         let secret_key = LocalSecretKey::generate();
@@ -67,11 +72,14 @@ fn login_item_create_save_load() {
     rt.block_on(async {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("porkpie.db");
-        let url = format!("sqlite://{}?mode=rwc", db_path.to_string_lossy().replace('\\', "/"));
+        let url = format!(
+            "sqlite://{}?mode=rwc",
+            db_path.to_string_lossy().replace('\\', "/")
+        );
         let backend = VaultBackend::connect_sqlite(&url).await.expect("connect");
 
         let secret_key = LocalSecretKey::generate();
-        let (summary, _recovery_kit) = backend
+        let (_summary, _recovery_kit) = backend
             .create_vault("TestVault", "a_very_long_password_123", &secret_key)
             .await
             .expect("create vault");
@@ -91,7 +99,10 @@ fn login_item_create_save_load() {
             .await
             .expect("create item");
 
-        assert_eq!(item.data.get_field("username").unwrap(), "alice@example.com");
+        assert_eq!(
+            item.data.get_field("username").unwrap(),
+            "alice@example.com"
+        );
 
         let items = handle.list_items().await.expect("list items");
         assert_eq!(items.len(), 1);
@@ -99,7 +110,10 @@ fn login_item_create_save_load() {
         assert_eq!(items[0].item_type, "Login");
 
         let loaded = handle.get_item(item.id).await.expect("get item");
-        assert_eq!(loaded.data.get_field("password").unwrap(), "secret_password_42");
+        assert_eq!(
+            loaded.data.get_field("password").unwrap(),
+            "secret_password_42"
+        );
     });
 }
 
@@ -110,7 +124,10 @@ fn lock_clears_decrypted_state() {
     rt.block_on(async {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("porkpie.db");
-        let url = format!("sqlite://{}?mode=rwc", db_path.to_string_lossy().replace('\\', "/"));
+        let url = format!(
+            "sqlite://{}?mode=rwc",
+            db_path.to_string_lossy().replace('\\', "/")
+        );
         let backend = VaultBackend::connect_sqlite(&url).await.expect("connect");
 
         let secret_key = LocalSecretKey::generate();
@@ -151,14 +168,17 @@ fn reopen_reloads_encrypted_vault_metadata() {
     rt.block_on(async {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("porkpie.db");
-        let url = format!("sqlite://{}?mode=rwc", db_path.to_string_lossy().replace('\\', "/"));
+        let url = format!(
+            "sqlite://{}?mode=rwc",
+            db_path.to_string_lossy().replace('\\', "/")
+        );
 
         let secret_key = LocalSecretKey::generate();
         let item_id;
 
         {
             let backend = VaultBackend::connect_sqlite(&url).await.expect("connect");
-            let (summary, _recovery_kit) = backend
+            let (_summary, _recovery_kit) = backend
                 .create_vault("TestVault", "a_very_long_password_123", &secret_key)
                 .await
                 .expect("create vault");
