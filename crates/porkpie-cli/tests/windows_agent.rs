@@ -39,22 +39,15 @@ mod windows_agent {
         let public_key =
             base64::engine::general_purpose::STANDARD.encode(signer.public_key_bytes());
         let private_key = hex::encode(seed);
-        let ssh_item = Item {
-            id: porkpie_types::ItemId::new(),
-            vault_id: vault.id,
-            data: ItemType::SSHKey(SSHKeySecret {
-                name: "test-ssh-key".to_string(),
-                public_key,
-                private_key,
-                passphrase: None,
-                comment: Some("test-key".to_string()),
-                allowed_hosts: vec![],
-                require_confirmation: false,
-            }),
-            created_at: porkpie_types::Timestamp::now(),
-            updated_at: porkpie_types::Timestamp::now(),
-            revision: 1,
-        };
+        let ssh_item = Item::new(ItemType::SSHKey(SSHKeySecret {
+            name: "test-ssh-key".to_string(),
+            public_key,
+            private_key,
+            passphrase: None,
+            comment: Some("test-key".to_string()),
+            allowed_hosts: vec![],
+            require_confirmation: false,
+        }));
 
         // We need to modify the vault to add the item, but vault is immutable
         // after creation. Use a separate unlocked vault instance.
