@@ -1,4 +1,5 @@
 use crate::errors::{ApiError, Result};
+use crate::models::VaultMetadataResponse;
 use porkpie_sync::{ConflictItem, EncryptedSyncItem, MergeStrategy};
 use porkpie_types::VaultId;
 use sha2::{Digest, Sha256};
@@ -81,6 +82,72 @@ pub async fn upsert_vault_metadata(pool: &SqlitePool, vault_id: &str) -> Result<
     .await?;
 
     Ok(())
+}
+
+/// Register a vault with its full cryptographic metadata. The
+/// `upsert_vault_metadata()` helper only creates a stub; this
+/// one replaces the salt and wrapped key with real values from
+/// the client.
+pub async fn register_vault(
+    pool: &SqlitePool,
+    vault_id: &str,
+    name: &str,
+    salt: &[u8],
+    master_key_wrapped: &[u8],
+    created_at: i64,
+) -> Result<()> {
+    validate_vault_id(vault_id)?;
+    sqlx::query(
+        r#"
+        INSERT INTO vaults (id, name, created_at, salt, master_key_wrapped, sync_revision)
+        VALUES (?, ?, ?, ?, ?, 0)
+        ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            salt = excluded.salt,
+            master_key_wrapped = excluded.master_key_wrapped,
+            created_at = excluded.created_at
+        "#,
+    )
+    .bind(vault_id)
+    .bind(name)
+    .bind(created_at)
+    .bind(salt)
+    .bind(master_key_wrapped)
+    .execute(pool)
+    .await?;
+
+    log_audit(pool, vault_id, "vault_register").await?;
+    Ok(())
+}
+
+/// Load a vault's metadata (encrypted blobs only) for the sync
+/// pull response that Peer B needs to reconstruct the locked
+/// vault on their side.
+pub async fn load_vault_metadata(
+    pool: &SqlitePool,
+    vault_id: &str,
+) -> Result<VaultMetadataResponse> {
+    validate_vault_exists(pool, vault_id).await?;
+
+    let row = sqlx::query_as::<_, (String, String, i64, Vec<u8>, Vec<u8>, i64)>(
+        r#"
+        SELECT id, name, created_at, salt, master_key_wrapped, sync_revision
+        FROM vaults
+        WHERE id = ?
+        "#,
+    )
+    .bind(vault_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(VaultMetadataResponse {
+        vault_id: row.0,
+        name: row.1,
+        created_at: row.2,
+        salt: row.3,
+        master_key_wrapped: row.4,
+        sync_revision: i64_to_u64(row.5),
+    })
 }
 
 /// Load encrypted items changed after a client revision.
@@ -302,6 +369,7 @@ const MIGRATIONS: &[&str] = &[
     r#"
     CREATE TABLE IF NOT EXISTS vaults (
         id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
         salt BLOB NOT NULL,
         master_key_wrapped BLOB NOT NULL,

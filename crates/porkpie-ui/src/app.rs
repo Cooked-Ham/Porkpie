@@ -2,7 +2,9 @@ use crate::pages::{
     ImportExportPage, ItemDetailPage, ItemListPage, OnboardingPage, PasswordGeneratorPage,
     SettingsPage, UnlockPage,
 };
-use crate::state::{AppState, Screen};
+use crate::state::AppState;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::state::Screen;
 use crate::vault_store::VaultBackend;
 use dioxus::prelude::*;
 
@@ -83,17 +85,12 @@ h2 { font-size: 1rem; margin-bottom: 6px; }
 "#;
 
 /// Database URL to use for the local vault store. Set via the
-/// `PORKPIE_DATABASE_URL` environment variable. On WASM this is ignored.
+/// `PORKPIE_DATABASE_URL` environment variable. The web shell does
+/// not have access to SQLite, so this helper only exists on the
+/// desktop / native build.
+#[cfg(not(target_arch = "wasm32"))]
 fn database_url_from_env() -> Option<String> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::env::var("PORKPIE_DATABASE_URL").ok()
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = std::env::var("PORKPIE_DATABASE_URL");
-        None
-    }
+    std::env::var("PORKPIE_DATABASE_URL").ok()
 }
 
 /// Root Dioxus component shared by desktop and web shells.

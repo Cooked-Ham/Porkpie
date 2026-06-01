@@ -74,7 +74,8 @@ fn parses_sync_options() {
         cli.command,
         Commands::Sync {
             server: Some(_),
-            api_key: Some(_)
+            api_key: Some(_),
+            ..
         }
     ));
 }

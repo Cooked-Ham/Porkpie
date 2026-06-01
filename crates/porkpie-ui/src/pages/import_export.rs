@@ -2,7 +2,9 @@ use crate::components::{
     button::Button, modal::Modal, password_input::PasswordInput, text_input::TextInput,
 };
 use crate::state::AppState;
-use crate::vault_store::{VaultBackend, VaultStoreError};
+use crate::vault_store::VaultBackend;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::vault_store::VaultStoreError;
 use dioxus::prelude::*;
 use porkpie_types::LocalSecretKey;
 
@@ -24,6 +26,7 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
 
     let status_setter = status.clone();
     let error_setter = error.clone();
+    #[cfg(not(target_arch = "wasm32"))]
     let export_setter = export_data.clone();
     let state_for_export = state_ref.clone();
     let backend_for_export = backend.clone();
@@ -32,13 +35,15 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
         error_setter.set(None);
         let _backend_handle = backend_for_export.clone();
         let state_handle = state_for_export.clone();
-        let status_handle = status_setter.clone();
         let error_handle = error_setter.clone();
+        #[cfg(not(target_arch = "wasm32"))]
+        let status_handle = status_setter.clone();
+        #[cfg(not(target_arch = "wasm32"))]
         let export_handle = export_setter.clone();
         cx.spawn(async move {
-            let handle_opt = state_handle.with(|s| s.unlocked_handle.as_ref().cloned());
             #[cfg(not(target_arch = "wasm32"))]
             {
+                let handle_opt = state_handle.with(|s| s.unlocked_handle.as_ref().cloned());
                 let Some(handle) = handle_opt else {
                     error_handle.set(Some("Unlock a vault before exporting".to_string()));
                     return;
@@ -58,8 +63,7 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
             }
             #[cfg(target_arch = "wasm32")]
             {
-                let _ = handle_opt;
-                let _ = backend_handle;
+                let _ = (state_handle, _backend_handle);
                 error_handle.set(Some(
                     "Backup export is not available in this build".to_string(),
                 ));
@@ -76,8 +80,10 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
         status.set(Some("Preparing plaintext backup...".to_string()));
         error.set(None);
         let state_handle = state_ref.clone();
-        let status_handle = status.clone();
         let error_handle = error.clone();
+        #[cfg(not(target_arch = "wasm32"))]
+        let status_handle = status.clone();
+        #[cfg(not(target_arch = "wasm32"))]
         let export_handle = export_data.clone();
         cx.spawn(async move {
             #[cfg(not(target_arch = "wasm32"))]
@@ -144,12 +150,13 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
         error_for_import.set(None);
         submitting.set(true);
         let state_handle: UseRef<AppState> = state_for_import.clone();
-        let status_handle: UseState<Option<String>> = status_for_import.clone();
         let error_handle: UseState<Option<String>> = error_for_import.clone();
         let submitting_handle: UseState<bool> = submitting.clone();
         let backend_handle: UseRef<VaultBackend> = backend.clone();
         let raw_json = import_json_for_click.clone();
         let raw_password = import_password_for_click.clone();
+        #[cfg(not(target_arch = "wasm32"))]
+        let status_handle: UseState<Option<String>> = status_for_import.clone();
         cx.spawn(async move {
             #[cfg(not(target_arch = "wasm32"))]
             {
@@ -221,7 +228,10 @@ pub fn ImportExportPage<'a>(cx: Scope<'a, ImportExportPageProps>) -> Element<'a>
     let export_text = export_data.get().clone();
     let status_text = status.get().clone();
     let error_text = error.get().clone();
+    #[cfg(not(target_arch = "wasm32"))]
     let is_unlocked = state_ref.with(|s| s.unlocked_handle.is_some());
+    #[cfg(target_arch = "wasm32")]
+    let is_unlocked = false;
 
     cx.render(rsx! {
         section { class: "screen", id: "backup",

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Porkpie</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #101114;
+        color: #f3f6f8;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      #main {
+        min-height: 100vh;
+      }
+      .porkpie-boot {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        color: #9aa7b4;
+        font-size: 0.95rem;
+        letter-spacing: 0.04em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="main">
+      <div class="porkpie-boot">Loading Porkpie&hellip;</div>
+    </div>
+    <script type="module">
+      import init from "./porkpie-web.js";
+      try {
+        await init("./porkpie-web_bg.wasm");
+      } catch (error) {
+        const target = document.getElementById("main");
+        if (target) {
+          target.innerHTML =
+            '<div class="porkpie-boot" style="color:#ff6b6b">Failed to start Porkpie: ' +
+            (error && error.message ? error.message : String(error)) +
+            "</div>";
+        }
+        console.error("porkpie-web init failed", error);
+      }
+    </script>
+  </body>
+</html>

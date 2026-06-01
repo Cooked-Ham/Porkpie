@@ -2,7 +2,9 @@ use crate::components::{
     button::Button, modal::Modal, password_input::PasswordInput, text_input::TextInput,
 };
 use crate::state::{AppState, Screen};
-use crate::vault_store::{DecryptedItem, VaultStoreError};
+use crate::vault_store::DecryptedItem;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::vault_store::VaultStoreError;
 use dioxus::prelude::*;
 use porkpie_types::{
     APIKeySecret, CustomSecret, DatabaseSecret, IdentitySecret, ItemType, LoginSecret,
@@ -44,24 +46,30 @@ pub fn ItemDetailPage<'a>(cx: Scope<'a, ItemDetailPageProps>) -> Element<'a> {
                 state.with_mut(|s| {
                     s.current_item = None;
                 });
-            } else if let Some(id) = id {
+            } else {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    let handle_opt = state.with(|s| s.unlocked_handle.as_ref().cloned());
-                    if let Some(handle) = handle_opt {
-                        match handle.get_item(id).await {
-                            Ok(decrypted) => {
-                                state.with_mut(|s| {
-                                    s.current_item = Some(decrypted);
-                                });
-                            }
-                            Err(error) => {
-                                state.with_mut(|s| {
-                                    s.error = Some(format!("Could not load item: {error}"));
-                                });
+                    if let Some(id) = id {
+                        let handle_opt = state.with(|s| s.unlocked_handle.as_ref().cloned());
+                        if let Some(handle) = handle_opt {
+                            match handle.get_item(id).await {
+                                Ok(decrypted) => {
+                                    state.with_mut(|s| {
+                                        s.current_item = Some(decrypted);
+                                    });
+                                }
+                                Err(error) => {
+                                    state.with_mut(|s| {
+                                        s.error = Some(format!("Could not load item: {error}"));
+                                    });
+                                }
                             }
                         }
                     }
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let _ = id;
                 }
             }
         }
@@ -181,10 +189,10 @@ pub fn ItemDetailPage<'a>(cx: Scope<'a, ItemDetailPageProps>) -> Element<'a> {
         let state = state_ref.clone();
         let error_handle = form_error.clone();
         cx.spawn(async move {
-            let field = "password".to_string();
-            let value = {
+            let value: Option<String> = {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
+                    let field = "password".to_string();
                     let handle_opt = state.with(|s| s.unlocked_handle.as_ref().cloned());
                     if let Some(handle) = handle_opt {
                         if let Some(id) = state.with(|s| match s.screen {
@@ -219,23 +227,30 @@ pub fn ItemDetailPage<'a>(cx: Scope<'a, ItemDetailPageProps>) -> Element<'a> {
                         });
                     }
                 }
-                let _ = value;
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let _ = value;
+                }
             } else {
                 error_handle.set(Some("Could not copy".to_string()));
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = state;
             }
         });
     };
 
     let on_delete_confirmed = move |_| {
-        let state = state_ref.clone();
-        let submitting_handle = submitting.clone();
-        let error_handle = form_error.clone();
-        show_delete_confirm.set(false);
-        let item_id_for_delete = item_id;
-        cx.spawn(async move {
-            submitting_handle.set(true);
-            #[cfg(not(target_arch = "wasm32"))]
-            {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let state = state_ref.clone();
+            let submitting_handle = submitting.clone();
+            let error_handle = form_error.clone();
+            show_delete_confirm.set(false);
+            let item_id_for_delete = item_id;
+            cx.spawn(async move {
+                submitting_handle.set(true);
                 if let Some(id) = item_id_for_delete {
                     let handle_opt = state.with(|s| s.unlocked_handle.as_ref().cloned());
                     if let Some(handle) = handle_opt {
@@ -255,9 +270,13 @@ pub fn ItemDetailPage<'a>(cx: Scope<'a, ItemDetailPageProps>) -> Element<'a> {
                         error_handle.set(Some("Vault is locked".to_string()));
                     }
                 }
-            }
-            submitting_handle.set(false);
-        });
+                submitting_handle.set(false);
+            });
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = item_id;
+        }
     };
 
     let on_back = move |_| {

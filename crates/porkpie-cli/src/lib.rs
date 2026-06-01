@@ -7,6 +7,7 @@ pub mod session;
 
 use clap::{Parser, Subcommand};
 use errors::Result;
+use porkpie_sync::MergeStrategy;
 
 /// Porkpie command-line arguments.
 #[derive(Debug, Parser)]
@@ -75,6 +76,9 @@ pub enum Commands {
         /// Bearer API key. Defaults to PORKPIE_API_KEY.
         #[arg(long)]
         api_key: Option<String>,
+        /// Merge strategy: last-write-wins, prefer-local, prefer-remote. Defaults to last-write-wins.
+        #[arg(long, default_value = "last-write-wins")]
+        strategy: String,
     },
 }
 
@@ -106,6 +110,18 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Delete { id } => commands::delete::run(&context, &id).await,
         Commands::Export { output } => commands::export::run(&context, output).await,
         Commands::Import { file } => commands::import::run(&context, &file).await,
-        Commands::Sync { server, api_key } => commands::sync::run(&context, server, api_key).await,
+        Commands::Sync {
+            server,
+            api_key,
+            strategy,
+        } => commands::sync::run(&context, server, api_key, parse_strategy(&strategy)).await,
+    }
+}
+
+fn parse_strategy(value: &str) -> MergeStrategy {
+    match value.to_ascii_lowercase().as_str() {
+        "prefer-local" | "preferlocal" => MergeStrategy::PreferLocal,
+        "prefer-remote" | "preferremote" => MergeStrategy::PreferRemote,
+        _ => MergeStrategy::LastWriteWins,
     }
 }

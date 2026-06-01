@@ -1,7 +1,10 @@
 use crate::{
     db,
     errors::{ApiError, Result},
-    models::{HealthResponse, StatusResponse, SyncPushRequest, SyncPushResponse},
+    models::{
+        HealthResponse, StatusResponse, SyncPushRequest, SyncPushResponse, SyncRegisterRequest,
+        SyncRegisterResponse, VaultMetadataResponse,
+    },
     AppState,
 };
 use axum::{extract::State, Json};
@@ -25,6 +28,28 @@ pub async fn status() -> Json<StatusResponse> {
     })
 }
 
+/// Register a vault on the sync server with its real cryptographic
+/// metadata. This is the first sync step: the client sends the
+/// vault's id, name, salt, wrapped master key, and creation
+/// timestamp. The server stores these as-is and never uses them
+/// to decrypt anything.
+pub async fn sync_register(
+    State(state): State<AppState>,
+    Json(request): Json<SyncRegisterRequest>,
+) -> Result<Json<SyncRegisterResponse>> {
+    db::register_vault(
+        &state.pool,
+        &request.vault_id,
+        &request.name,
+        &request.salt,
+        &request.master_key_wrapped,
+        request.created_at,
+    )
+    .await?;
+
+    Ok(Json(SyncRegisterResponse { ok: true }))
+}
+
 /// Begin sync by returning encrypted changes after the client revision.
 pub async fn sync_begin(
     State(state): State<AppState>,
@@ -38,6 +63,16 @@ pub async fn sync_begin(
         new_revision,
         conflicts: Vec::new(),
     }))
+}
+
+/// Return vault metadata (encrypted blobs only) so the peer can
+/// reconstruct the locked vault locally.
+pub async fn vault_metadata(
+    State(state): State<AppState>,
+    axum::extract::Path(vault_id): axum::extract::Path<String>,
+) -> Result<Json<VaultMetadataResponse>> {
+    let meta = db::load_vault_metadata(&state.pool, &vault_id).await?;
+    Ok(Json(meta))
 }
 
 /// Push encrypted item changes to the server store.

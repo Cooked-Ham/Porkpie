@@ -66,6 +66,10 @@ pub fn ItemListPage<'a>(cx: Scope<'a, ItemListPageProps>) -> Element<'a> {
                     }
                 }
             }
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = state;
+            }
         });
     };
 

@@ -15,6 +15,23 @@ pub enum ItemType {
     Custom(CustomSecret),
 }
 
+impl ItemType {
+    pub fn type_label(&self) -> &'static str {
+        match self {
+            Self::Login(_) => "Login",
+            Self::APIKey(_) => "APIKey",
+            Self::SSHKey(_) => "SSHKey",
+            Self::SecureNote(_) => "SecureNote",
+            Self::Server(_) => "Server",
+            Self::Database(_) => "Database",
+            Self::Identity(_) => "Identity",
+            Self::SoftwareLicense(_) => "SoftwareLicense",
+            Self::RecoveryCodes(_) => "RecoveryCodes",
+            Self::Custom(_) => "Custom",
+        }
+    }
+}
+
 impl fmt::Debug for ItemType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

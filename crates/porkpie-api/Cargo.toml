@@ -22,3 +22,5 @@ tower-http = { version = "0.5", features = ["cors"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+porkpie-core = { path = "../porkpie-core" }
+porkpie-store = { path = "../porkpie-store" }

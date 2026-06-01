@@ -5,3 +5,9 @@ edition = "2021"
 
 [dependencies]
 porkpie-ui = { path = "../../crates/porkpie-ui" }
+dioxus = "0.4"
+dioxus-web = "0.4"
+
+[[bin]]
+name = "porkpie-web"
+path = "src/main.rs"

@@ -1,5 +1,7 @@
 use crate::components::{button::Button, password_input::PasswordInput, text_input::TextInput};
-use crate::state::{AppState, Screen};
+use crate::state::AppState;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::state::Screen;
 use crate::vault_store::{VaultBackend, VaultStoreError};
 use dioxus::prelude::*;
 use porkpie_types::LocalSecretKey;
@@ -58,9 +60,12 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
         submitting_setter.set(true);
         error_setter.set(None);
         let backend_handle = backend.clone();
-        let state_handle = state_ref.clone();
         let error_handle = error_setter.clone();
+        #[cfg(not(target_arch = "wasm32"))]
+        let state_handle = state_ref.clone();
+        #[cfg(not(target_arch = "wasm32"))]
         let submitting_handle = submitting_setter.clone();
+        #[cfg(not(target_arch = "wasm32"))]
         let raw_name_for_async = raw_name.clone();
         cx.spawn(async move {
             let backend = backend_handle.read().clone();
@@ -68,6 +73,7 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
                 .unlock_vault(&raw_name, &raw_password, &secret_key)
                 .await;
             match result {
+                #[cfg(not(target_arch = "wasm32"))]
                 Ok(handle) => {
                     let items = match handle.list_items().await {
                         Ok(items) => items,
@@ -84,15 +90,18 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
                             state.vaults.push(summary.clone());
                         }
                         state.current_vault = Some(summary);
-                        #[cfg(not(target_arch = "wasm32"))]
-                        {
-                            state.unlocked_handle = Some(handle);
-                        }
+                        state.unlocked_handle = Some(handle);
                         state.items = items;
                         state.current_item = None;
                         state.screen = Screen::List;
                         state.status = Some(format!("Unlocked vault '{}'", raw_name_for_async));
                     });
+                }
+                #[cfg(target_arch = "wasm32")]
+                Ok(_) => {
+                    error_handle.set(Some(
+                        "Vault unlock is not available in this build".to_string(),
+                    ));
                 }
                 Err(VaultStoreError::WrongPassword) => {
                     error_handle.set(Some(
@@ -109,7 +118,10 @@ pub fn UnlockPage<'a>(cx: Scope<'a, UnlockPageProps>) -> Element<'a> {
                     error_handle.set(Some(format!("Could not unlock vault: {other}")));
                 }
             }
-            submitting_handle.set(false);
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                submitting_handle.set(false);
+            }
         });
     };
 

@@ -24,8 +24,10 @@ pub struct AppState {
 /// Build the API router.
 pub fn build_router(state: AppState) -> Router {
     let protected_routes = Router::new()
+        .route("/api/v1/sync/register", post(handlers::sync_register))
         .route("/api/v1/sync/begin", post(handlers::sync_begin))
         .route("/api/v1/sync/push", post(handlers::sync_push))
+        .route("/api/v1/vault/{vault_id}", get(handlers::vault_metadata))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_api_key,

@@ -1,4 +1,6 @@
-use porkpie_core::{Item, LocalSecretKey, RecoveryKit, Vault};
+#[cfg(not(target_arch = "wasm32"))]
+use porkpie_core::Vault;
+use porkpie_core::{Item, LocalSecretKey, RecoveryKit};
 use porkpie_types::{ItemId, ItemType, Timestamp, VaultId};
 use thiserror::Error;
 
@@ -138,6 +140,7 @@ impl VaultBackend {
     /// Create a new vault and persist it. Returns the summary and the
     /// recovery kit. Falls back to [`VaultStoreError::Unavailable`] when
     /// the backend is not configured (for example on WASM).
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn create_vault(
         &self,
         name: &str,
@@ -145,7 +148,6 @@ impl VaultBackend {
         secret_key: &LocalSecretKey,
     ) -> Result<(VaultSummary, RecoveryKit)> {
         match self {
-            #[cfg(not(target_arch = "wasm32"))]
             Self::Sqlite(state) => {
                 let pool = {
                     let guard = state.lock().await;
@@ -183,8 +185,21 @@ impl VaultBackend {
         }
     }
 
+    /// WASM stub. The web shell does not have a backend, so vault
+    /// creation always returns [`VaultStoreError::Unavailable`].
+    #[cfg(target_arch = "wasm32")]
+    pub async fn create_vault(
+        &self,
+        _name: &str,
+        _password: &str,
+        _secret_key: &LocalSecretKey,
+    ) -> Result<(VaultSummary, RecoveryKit)> {
+        Err(VaultStoreError::Unavailable)
+    }
+
     /// Unlock an existing vault, load and decrypt all items, and return a
     /// handle for subsequent operations.
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn unlock_vault(
         &self,
         name: &str,
@@ -192,12 +207,23 @@ impl VaultBackend {
         secret_key: &LocalSecretKey,
     ) -> Result<UnlockedVaultHandle> {
         match self {
-            #[cfg(not(target_arch = "wasm32"))]
             Self::Sqlite(state) => {
                 UnlockedVaultHandle::open(state.clone(), name, password, secret_key).await
             }
             Self::Unavailable => Err(VaultStoreError::Unavailable),
         }
+    }
+
+    /// WASM stub. The web shell does not have access to a SQLite
+    /// backend, so unlocking always returns [`VaultStoreError::Unavailable`].
+    #[cfg(target_arch = "wasm32")]
+    pub async fn unlock_vault(
+        &self,
+        _name: &str,
+        _password: &str,
+        _secret_key: &LocalSecretKey,
+    ) -> Result<()> {
+        Err(VaultStoreError::Unavailable)
     }
 
     /// Load the list of vault summaries. Used by the unlock page to show

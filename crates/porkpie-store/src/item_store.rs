@@ -114,6 +114,85 @@ pub async fn update_item(pool: &SqlitePool, item_id: &ItemId, ciphertext: &[u8])
     Ok(())
 }
 
+/// Load all encrypted item rows for a vault (full records).
+pub async fn load_item_records(
+    pool: &SqlitePool,
+    vault_id: &VaultId,
+) -> Result<Vec<EncryptedItemData>> {
+    let rows = sqlx::query_as::<_, (String, String, String, Vec<u8>, i64, i64, i64)>(
+        r#"
+        SELECT id, vault_id, item_type, ciphertext, created_at, updated_at, sync_revision
+        FROM items
+        WHERE vault_id = ?
+        ORDER BY sync_revision, id
+        "#,
+    )
+    .bind(vault_id.to_string())
+    .fetch_all(pool)
+    .await
+    .map_err(map_sqlx_error)?;
+
+    rows.into_iter().map(encrypted_item_from_row).collect()
+}
+
+/// Load encrypted item rows that changed after a given revision.
+pub async fn load_items_with_type_since(
+    pool: &SqlitePool,
+    vault_id: &VaultId,
+    last_revision: u64,
+) -> Result<Vec<EncryptedItemData>> {
+    let rows = sqlx::query_as::<_, (String, String, String, Vec<u8>, i64, i64, i64)>(
+        r#"
+        SELECT id, vault_id, item_type, ciphertext, created_at, updated_at, sync_revision
+        FROM items
+        WHERE vault_id = ? AND sync_revision > ?
+        ORDER BY sync_revision, id
+        "#,
+    )
+    .bind(vault_id.to_string())
+    .bind(u64_to_i64(last_revision))
+    .fetch_all(pool)
+    .await
+    .map_err(map_sqlx_error)?;
+
+    rows.into_iter().map(encrypted_item_from_row).collect()
+}
+
+/// Store or overwrite an encrypted item row. Unlike `store_item`
+/// this version forces the given revision, used when the server
+/// assigns the revision during push.
+pub async fn upsert_item_revision(
+    pool: &SqlitePool,
+    item: &EncryptedItemData,
+    revision: u64,
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO items (
+            id, vault_id, item_type, ciphertext, created_at, updated_at, sync_revision
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            item_type = excluded.item_type,
+            ciphertext = excluded.ciphertext,
+            updated_at = excluded.updated_at,
+            sync_revision = excluded.sync_revision
+        "#,
+    )
+    .bind(item.id.to_string())
+    .bind(item.vault_id.to_string())
+    .bind(item.item_type.as_str())
+    .bind(item.ciphertext.as_slice())
+    .bind(item.created_at.to_millis())
+    .bind(item.updated_at.to_millis())
+    .bind(u64_to_i64(revision))
+    .execute(pool)
+    .await
+    .map_err(map_sqlx_error)?;
+
+    Ok(())
+}
+
 /// Delete an encrypted item by identifier.
 pub async fn delete_item(pool: &SqlitePool, item_id: &ItemId) -> Result<()> {
     let result = sqlx::query("DELETE FROM items WHERE id = ?")

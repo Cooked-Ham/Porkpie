@@ -1,0 +1,160 @@
+//! Desktop launch configuration helpers.
+//!
+//! Encapsulates reading the desktop launch configuration from the
+//! process environment and converting it into the `dioxus_desktop::Config`
+//! the entrypoint uses.
+
+use std::path::PathBuf;
+
+/// Configuration used by the desktop entrypoint.
+#[derive(Debug, Clone)]
+pub struct LaunchConfig {
+    pub window_title: String,
+    pub window_width: u32,
+    pub window_height: u32,
+    pub database_url: String,
+}
+
+impl Default for LaunchConfig {
+    fn default() -> Self {
+        Self {
+            window_title: "Porkpie".to_string(),
+            window_width: 1180,
+            window_height: 820,
+            database_url: default_database_url(),
+        }
+    }
+}
+
+impl LaunchConfig {
+    /// Build a launch config from the process environment, falling
+    /// back to sensible defaults for the desktop binary.
+    pub fn load() -> Self {
+        let mut config = Self::default();
+        if let Ok(value) = std::env::var("PORKPIE_WINDOW_TITLE") {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                config.window_title = trimmed.to_string();
+            }
+        }
+        if let Ok(value) = std::env::var("PORKPIE_WINDOW_WIDTH") {
+            if let Ok(parsed) = value.parse::<u32>() {
+                if parsed >= 480 {
+                    config.window_width = parsed;
+                }
+            }
+        }
+        if let Ok(value) = std::env::var("PORKPIE_WINDOW_HEIGHT") {
+            if let Ok(parsed) = value.parse::<u32>() {
+                if parsed >= 360 {
+                    config.window_height = parsed;
+                }
+            }
+        }
+        if let Ok(value) = std::env::var("PORKPIE_DATABASE_URL") {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                config.database_url = trimmed.to_string();
+            }
+        }
+        config
+    }
+
+    /// Convert into a Dioxus desktop `Config`.
+    pub fn into_dioxus_config(self) -> dioxus_desktop::Config {
+        // The Dioxus desktop backend reads the database URL from
+        // the same environment variable the UI uses, so any caller
+        // overriding the location through `LaunchConfig` is wired
+        // through the process environment.
+        if std::env::var_os("PORKPIE_DATABASE_URL").is_none() {
+            std::env::set_var("PORKPIE_DATABASE_URL", &self.database_url);
+        }
+        dioxus_desktop::Config::default().with_window(
+            dioxus_desktop::WindowBuilder::new()
+                .with_title(&self.window_title)
+                .with_inner_size(dioxus_desktop::LogicalSize::new(
+                    f64::from(self.window_width),
+                    f64::from(self.window_height),
+                )),
+        )
+    }
+}
+
+/// Resolve the default SQLite location for the desktop binary.
+fn default_database_url() -> String {
+    let path = default_database_path();
+    let parent = path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    if let Err(error) = std::fs::create_dir_all(&parent) {
+        eprintln!(
+            "porkpie-desktop: could not create {}: {error}; falling back to in-memory database",
+            parent.display()
+        );
+        return "sqlite::memory:".to_string();
+    }
+    format!("sqlite://{}?mode=rwc", path.display())
+}
+
+/// Path of the default on-disk SQLite database for the desktop
+/// binary. Honours `PORKPIE_DATA_DIR` for callers that want a
+/// specific location; otherwise uses the platform data directory.
+fn default_database_path() -> PathBuf {
+    if let Ok(value) = std::env::var("PORKPIE_DATA_DIR") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed).join("porkpie.db");
+        }
+    }
+    if let Some(dir) = platform_data_dir() {
+        return dir.join("porkpie.db");
+    }
+    PathBuf::from("porkpie.db")
+}
+
+/// Pick a platform-appropriate data directory without pulling in an
+/// extra crate. Returns `None` only if the home directory is
+/// unavailable.
+fn platform_data_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            if !appdata.trim().is_empty() {
+                return Some(PathBuf::from(appdata).join("Porkpie"));
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            if !home.trim().is_empty() {
+                return Some(
+                    PathBuf::from(home)
+                        .join("Library")
+                        .join("Application Support")
+                        .join("Porkpie"),
+                );
+            }
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+            if !xdg.trim().is_empty() {
+                return Some(PathBuf::from(xdg).join("porkpie"));
+            }
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            if !home.trim().is_empty() {
+                return Some(
+                    PathBuf::from(home)
+                        .join(".local")
+                        .join("share")
+                        .join("porkpie"),
+                );
+            }
+        }
+    }
+    None
+}
