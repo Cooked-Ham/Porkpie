@@ -1,47 +1,63 @@
-//! Background scheduling primitives for future Porkpie sync workers.
+//! SSH agent foundation for Porkpie.
+//!
+//! This crate provides the signer trait, host/key policy structs, and an
+//! in-memory Ed25519 signer.  It does **not** implement OpenSSH agent
+//! socket/named-pipe integration; that is a future phase.
 
-use std::time::{Duration, Instant};
+pub mod in_memory_signer;
+pub mod policy;
+pub mod signer;
 
-/// Tracks when a periodic background job should run.
-#[derive(Debug, Clone)]
-pub struct AgentSchedule {
-    interval: Duration,
-    next_run: Instant,
-}
-
-impl AgentSchedule {
-    /// Create a new schedule that is immediately due.
-    pub fn new(interval: Duration) -> Self {
-        Self {
-            interval,
-            next_run: Instant::now(),
-        }
-    }
-
-    /// Return true when the task is due.
-    pub fn is_due(&self, now: Instant) -> bool {
-        now >= self.next_run
-    }
-
-    /// Mark the task as completed and schedule the next run.
-    pub fn mark_completed(&mut self, now: Instant) {
-        self.next_run = now + self.interval;
-    }
-}
+pub use in_memory_signer::Ed25519Signer;
+pub use policy::{HostKeyPolicy, SshKeyIdentity};
+pub use signer::{SignerError, SshSigner};
 
 #[cfg(test)]
 mod tests {
-    use super::AgentSchedule;
-    use std::time::{Duration, Instant};
+    use super::*;
 
     #[test]
-    fn schedule_advances_after_completion() {
-        let now = Instant::now();
-        let mut schedule = AgentSchedule::new(Duration::from_secs(30));
-        assert!(schedule.is_due(Instant::now() + Duration::from_millis(1)));
+    fn signer_trait_works_with_unlocked_in_memory_key() {
+        let signer = Ed25519Signer::generate();
+        let data = b"sign this";
+        let signature = signer.sign(data).expect("signing must succeed");
+        assert!(!signature.is_empty());
+        assert_eq!(signer.algorithm(), "ssh-ed25519");
+        assert_eq!(signer.public_key_bytes().len(), 32);
+    }
 
-        schedule.mark_completed(now);
-        assert!(!schedule.is_due(now + Duration::from_secs(1)));
-        assert!(schedule.is_due(now + Duration::from_secs(31)));
+    #[test]
+    fn host_key_policy_allows_all_when_empty() {
+        let policy = HostKeyPolicy::unrestricted();
+        assert!(policy.is_host_allowed("any.host.com"));
+    }
+
+    #[test]
+    fn host_key_policy_restricts_to_allowed_hosts() {
+        let policy = HostKeyPolicy {
+            allowed_hosts: vec!["github.com".to_string(), "gitlab.com".to_string()],
+            require_confirmation: false,
+        };
+        assert!(policy.is_host_allowed("github.com"));
+        assert!(policy.is_host_allowed("gitlab.com"));
+        assert!(!policy.is_host_allowed("evil.com"));
+    }
+
+    #[test]
+    fn host_key_policy_require_confirmation_flag() {
+        let policy = HostKeyPolicy::require_confirmation();
+        assert!(policy.require_confirmation);
+        assert!(policy.is_host_allowed("any.host.com"));
+    }
+
+    #[test]
+    fn ssh_key_identity_holds_comment_and_public_key() {
+        let identity = SshKeyIdentity {
+            comment: "my laptop".to_string(),
+            public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 my laptop".to_string(),
+            algorithm: "ssh-ed25519".to_string(),
+        };
+        assert_eq!(identity.comment, "my laptop");
+        assert!(identity.public_key.contains("ssh-ed25519"));
     }
 }

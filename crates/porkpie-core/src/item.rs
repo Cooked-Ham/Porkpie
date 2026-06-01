@@ -80,6 +80,13 @@ impl Item {
                 if let Some(passphrase) = &mut secret.passphrase {
                     passphrase.zeroize();
                 }
+                if let Some(comment) = &mut secret.comment {
+                    comment.zeroize();
+                }
+                for host in &mut secret.allowed_hosts {
+                    host.zeroize();
+                }
+                secret.allowed_hosts.clear();
             }
             ItemType::SecureNote(secret) => {
                 secret.title.zeroize();

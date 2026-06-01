@@ -18,6 +18,7 @@ pub mod list;
 pub mod lock;
 pub mod read;
 pub mod run_cmd;
+pub mod ssh;
 pub mod sync;
 pub mod unlock;
 pub mod write;

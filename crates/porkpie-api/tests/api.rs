@@ -154,6 +154,268 @@ async fn push_reports_conflict_when_server_changed_after_base_revision() {
     assert_eq!(error.conflicts.expect("conflict data").len(), 1);
 }
 
+#[tokio::test]
+async fn sync_routes_reject_wrong_api_key() {
+    let app = test_app().await;
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/sync/begin",
+            &SyncRequest {
+                vault_id: VaultId::new().to_string(),
+                last_revision: 0,
+            },
+            Some("wrong-api-key-12345"),
+        ))
+        .await
+        .expect("route response");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn sync_routes_reject_revoked_api_key() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+    db::upsert_api_key(&pool, API_KEY)
+        .await
+        .expect("seed api key");
+    db::revoke_api_key(&pool, API_KEY)
+        .await
+        .expect("revoke api key");
+
+    let app = build_router(AppState { pool });
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/sync/begin",
+            &SyncRequest {
+                vault_id: VaultId::new().to_string(),
+                last_revision: 0,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("route response");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn push_rejects_plaintext_username_payload() {
+    let (app, vault_id) = seeded_app().await;
+    let plaintext = r#"{"username":"alice","password":"secret123"}"#;
+    let item = encrypted_item(
+        ItemId::new().to_string(),
+        plaintext.as_bytes().to_vec(),
+        0,
+        1,
+    );
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/sync/push",
+            &SyncPushRequest {
+                vault_id,
+                base_revision: 0,
+                items: vec![item],
+                merge_strategy: None,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("push response");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let error: ErrorResponse = response_json(response).await;
+    assert_eq!(error.error, "validation_error");
+    assert!(
+        error.message.contains("username"),
+        "error should mention the detected field: {}",
+        error.message
+    );
+}
+
+#[tokio::test]
+async fn push_rejects_plaintext_password_payload() {
+    let (app, vault_id) = seeded_app().await;
+    let plaintext = r#"{"password":"secret123"}"#;
+    let item = encrypted_item(
+        ItemId::new().to_string(),
+        plaintext.as_bytes().to_vec(),
+        0,
+        1,
+    );
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/sync/push",
+            &SyncPushRequest {
+                vault_id,
+                base_revision: 0,
+                items: vec![item],
+                merge_strategy: None,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("push response");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let error: ErrorResponse = response_json(response).await;
+    assert!(error.message.contains("password"));
+}
+
+#[tokio::test]
+async fn push_rejects_plaintext_private_key_payload() {
+    let (app, vault_id) = seeded_app().await;
+    let plaintext = r#"{"private_key":"-----BEGIN OPENSSH PRIVATE KEY-----"}"#;
+    let item = encrypted_item(
+        ItemId::new().to_string(),
+        plaintext.as_bytes().to_vec(),
+        0,
+        1,
+    );
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/sync/push",
+            &SyncPushRequest {
+                vault_id,
+                base_revision: 0,
+                items: vec![item],
+                merge_strategy: None,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("push response");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let error: ErrorResponse = response_json(response).await;
+    assert!(error.message.contains("private_key"));
+}
+
+#[tokio::test]
+async fn push_rejects_plaintext_api_key_payload() {
+    let (app, vault_id) = seeded_app().await;
+    let plaintext = r#"{"api_key":"sk_live_12345"}"#;
+    let item = encrypted_item(
+        ItemId::new().to_string(),
+        plaintext.as_bytes().to_vec(),
+        0,
+        1,
+    );
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/sync/push",
+            &SyncPushRequest {
+                vault_id,
+                base_revision: 0,
+                items: vec![item],
+                merge_strategy: None,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("push response");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let error: ErrorResponse = response_json(response).await;
+    assert!(error.message.contains("api_key"));
+}
+
+#[tokio::test]
+async fn push_rejects_plaintext_totp_payload() {
+    let (app, vault_id) = seeded_app().await;
+    let plaintext = r#"{"totp":"123456"}"#;
+    let item = encrypted_item(
+        ItemId::new().to_string(),
+        plaintext.as_bytes().to_vec(),
+        0,
+        1,
+    );
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/sync/push",
+            &SyncPushRequest {
+                vault_id,
+                base_revision: 0,
+                items: vec![item],
+                merge_strategy: None,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("push response");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let error: ErrorResponse = response_json(response).await;
+    assert!(error.message.contains("totp"));
+}
+
+#[tokio::test]
+async fn push_rejects_plaintext_notes_payload() {
+    let (app, vault_id) = seeded_app().await;
+    let plaintext = r#"{"notes":"secret notes here"}"#;
+    let item = encrypted_item(
+        ItemId::new().to_string(),
+        plaintext.as_bytes().to_vec(),
+        0,
+        1,
+    );
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/sync/push",
+            &SyncPushRequest {
+                vault_id,
+                base_revision: 0,
+                items: vec![item],
+                merge_strategy: None,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("push response");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let error: ErrorResponse = response_json(response).await;
+    assert!(error.message.contains("notes"));
+}
+
+#[tokio::test]
+async fn push_accepts_real_encrypted_binary_blobs() {
+    let (app, vault_id) = seeded_app().await;
+    // Real encrypted data should not contain JSON-like field names.
+    let real_ciphertext = vec![
+        0x01, 0x02, 0x03, 0x04, 0x05, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde,
+        0xf0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee,
+        0xff, 0x00,
+    ];
+    let item = encrypted_item(ItemId::new().to_string(), real_ciphertext, 0, 1);
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/sync/push",
+            &SyncPushRequest {
+                vault_id,
+                base_revision: 0,
+                items: vec![item],
+                merge_strategy: None,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("push response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
 async fn test_app() -> axum::Router {
     let pool = db::connect("sqlite::memory:")
         .await

@@ -136,6 +136,8 @@ async fn raw_sqlite_does_not_contain_fixture_secrets() {
         public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5".to_string(),
         private_key: "DO_NOT_LEAK_PRIVATE_KEY_123".to_string(),
         passphrase: None,
+        comment: Some("production server key".to_string()),
+        allowed_hosts: vec!["prod.example.com".to_string()],
     }));
 
     let note_item = Item::new(ItemType::SecureNote(SecureNoteSecret {

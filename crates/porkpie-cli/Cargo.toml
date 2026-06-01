@@ -8,6 +8,7 @@ name = "porkpie"
 path = "src/main.rs"
 
 [dependencies]
+porkpie-agent = { path = "../porkpie-agent" }
 porkpie-core = { path = "../porkpie-core" }
 porkpie-import = { path = "../porkpie-import" }
 porkpie-store = { path = "../porkpie-store" }

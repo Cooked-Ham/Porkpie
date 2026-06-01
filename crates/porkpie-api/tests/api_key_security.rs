@@ -1,4 +1,4 @@
-use porkpie_api::db;
+use porkpie_api::{config::Config, db};
 use sqlx::Row;
 
 #[tokio::test]
@@ -66,4 +66,27 @@ async fn different_api_keys_produce_different_hashes() {
     let hash_a = db::hash_api_key("key-alpha");
     let hash_b = db::hash_api_key("key-beta");
     assert_ne!(hash_a, hash_b);
+}
+
+#[test]
+fn config_rejects_missing_api_key_env() {
+    // Remove API_KEY from the environment if it exists.
+    let previous = std::env::var("API_KEY").ok();
+    std::env::remove_var("API_KEY");
+
+    let result = Config::from_env();
+    assert!(
+        result.is_err(),
+        "Config must fail when API_KEY environment variable is missing"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("API_KEY"),
+        "error should mention API_KEY: {err}"
+    );
+
+    // Restore the previous value so other tests are not affected.
+    if let Some(value) = previous {
+        std::env::set_var("API_KEY", value);
+    }
 }

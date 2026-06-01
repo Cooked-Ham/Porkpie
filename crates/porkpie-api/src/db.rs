@@ -67,6 +67,21 @@ pub async fn api_key_exists(pool: &SqlitePool, api_key: &str) -> Result<bool> {
     Ok(count.0 > 0)
 }
 
+/// Deactivate an API key so it can no longer authenticate.
+pub async fn revoke_api_key(pool: &SqlitePool, api_key: &str) -> Result<()> {
+    let key_hash = hash_api_key(api_key);
+    sqlx::query(
+        r#"
+        UPDATE api_keys SET active = 0 WHERE api_key_hash = ?
+        "#,
+    )
+    .bind(&key_hash)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 /// Seed vault metadata on the encrypted server store.
 pub async fn upsert_vault_metadata(pool: &SqlitePool, vault_id: &str) -> Result<()> {
     validate_vault_id(vault_id)?;
@@ -251,6 +266,30 @@ fn validate_vault_id(vault_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Detect obvious plaintext patterns in what should be an encrypted blob.
+/// Reject payloads that contain human-readable secret field names or JSON
+/// structure, because real ciphertext should be opaque binary data.
+fn detect_plaintext_payload(ciphertext: &[u8]) -> Option<&'static str> {
+    let text = String::from_utf8_lossy(ciphertext);
+    // Check for obvious JSON structure that indicates plaintext.
+    if text.contains("\"") && text.contains(":") && text.contains("{") {
+        const SENSITIVE_FIELDS: &[&str] = &[
+            "username",
+            "password",
+            "private_key",
+            "api_key",
+            "totp",
+            "notes",
+        ];
+        for field in SENSITIVE_FIELDS {
+            if text.contains(field) {
+                return Some(field);
+            }
+        }
+    }
+    None
+}
+
 fn validate_item(item: &EncryptedSyncItem) -> Result<()> {
     if item.item_id.trim().is_empty() {
         return Err(ApiError::Validation("item_id is required".to_string()));
@@ -260,6 +299,11 @@ fn validate_item(item: &EncryptedSyncItem) -> Result<()> {
     }
     if item.ciphertext.is_empty() {
         return Err(ApiError::Validation("ciphertext is required".to_string()));
+    }
+    if let Some(field) = detect_plaintext_payload(&item.ciphertext) {
+        return Err(ApiError::Validation(format!(
+            "ciphertext appears to contain plaintext field '{field}'"
+        )));
     }
     Ok(())
 }

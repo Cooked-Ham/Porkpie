@@ -99,6 +99,7 @@ The CLI:
 ## Security Boundary
 
 - **Sync payloads** contain ciphertext and non-secret metadata only. The server never receives the master password, the local secret key, the vault key, or any plaintext item fields.
+- **Plaintext rejection** (Phase 10): The server validates every pushed `ciphertext` blob. If it detects obvious plaintext patterns — JSON structures containing field names like `username`, `password`, `private_key`, `api_key`, `totp`, or `notes` — the push is rejected with HTTP 422 (`validation_error`). Real encrypted ciphertext must be opaque binary data.
 - **Vault registration** sends `salt`, `master_key_wrapped`, and timestamps — all ciphertext-adjacent metadata. The server stores these as opaque blobs and never uses them to decrypt.
 - **API logs** record audit events (`sync_push`, `vault_register`) with timestamps and vault IDs only. Item payloads and ciphertext are not logged.
 - **Server-side zero-knowledge** is maintained: the server's database has no `name` column in items, no username/password columns, and no decryption logic. The test suite asserts that ciphertext rows do not contain fixture plaintext even when the ciphertexts happen to use ASCII placeholder data.

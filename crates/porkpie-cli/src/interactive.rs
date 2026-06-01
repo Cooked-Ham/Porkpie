@@ -72,6 +72,17 @@ pub fn confirm_delete(id: &str) -> Result<bool> {
         .interact()?)
 }
 
+/// Confirm a dangerous plaintext export.
+pub fn confirm_dangerous_plaintext_export() -> Result<bool> {
+    Ok(Confirm::new()
+        .with_prompt(
+            "WARNING: This will write ALL decrypted secrets to a plaintext JSON file. \
+Are you sure you want to proceed?",
+        )
+        .default(false)
+        .interact()?)
+}
+
 /// Return a stable display name for an item type.
 pub fn item_type_name(item_type: &ItemType) -> &'static str {
     match item_type {
@@ -156,11 +167,22 @@ fn prompt_ssh_key(existing: Option<&ItemType>) -> Result<ItemType> {
         Some(ItemType::SSHKey(secret)) => Some(secret),
         _ => None,
     };
+    let allowed_hosts_default = existing.map(|s| s.allowed_hosts.join(","));
     Ok(ItemType::SSHKey(SSHKeySecret {
         name: prompt_string("Name", existing.map(|s| s.name.as_str()))?,
         public_key: prompt_string("Public key", existing.map(|s| s.public_key.as_str()))?,
         private_key: prompt_string("Private key", existing.map(|s| s.private_key.as_str()))?,
         passphrase: prompt_optional("Passphrase", existing.and_then(|s| s.passphrase.as_deref()))?,
+        comment: prompt_optional("Comment", existing.and_then(|s| s.comment.as_deref()))?,
+        allowed_hosts: prompt_string(
+            "Allowed hosts (comma separated)",
+            allowed_hosts_default.as_deref(),
+        )?
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect(),
     }))
 }
 

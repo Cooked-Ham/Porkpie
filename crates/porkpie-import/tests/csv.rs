@@ -52,3 +52,29 @@ fn csv_import_rejects_missing_required_fields() {
 
     assert!(error.to_string().contains("invalid row 2"));
 }
+
+#[test]
+fn csv_imported_secret_is_encrypted_at_rest() {
+    let (mut vault, _) = Vault::create(
+        "TestVault",
+        "sixteen-character-password",
+        &test_secret_key(),
+    )
+    .expect("create vault");
+    let csv =
+        "item_type,title,username,password,notes\nlogin,Email,me@example.com,DO_NOT_LEAK_CSV_SECRET,primary\n";
+
+    let result = import_csv_reader(csv.as_bytes(), &mut vault).expect("import csv");
+    assert_eq!(result.imported, 1);
+
+    // The imported secret must be encrypted immediately; the ciphertext must
+    // not contain the plaintext marker.
+    let ciphertext = &result.encrypted_items[0].ciphertext;
+    let marker = b"DO_NOT_LEAK_CSV_SECRET";
+    assert!(
+        !ciphertext
+            .windows(marker.len())
+            .any(|window| window == marker),
+        "imported secret must not appear in ciphertext"
+    );
+}

@@ -38,6 +38,8 @@ impl ItemType {
                 "public_key" => Ok(s.public_key.clone()),
                 "private_key" => Ok(s.private_key.clone()),
                 "passphrase" => Ok(s.passphrase.clone().unwrap_or_default()),
+                "comment" => Ok(s.comment.clone().unwrap_or_default()),
+                "allowed_hosts" => Ok(s.allowed_hosts.join(",")),
                 _ => Err(FieldError::FieldNotFound(field_name.to_string())),
             },
             ItemType::SecureNote(s) => match field_name {
@@ -137,6 +139,21 @@ impl ItemType {
                     } else {
                         Some(value.to_string())
                     }
+                }
+                "comment" => {
+                    s.comment = if value.is_empty() {
+                        None
+                    } else {
+                        Some(value.to_string())
+                    }
+                }
+                "allowed_hosts" => {
+                    s.allowed_hosts = value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(String::from)
+                        .collect();
                 }
                 _ => return Err(FieldError::FieldNotFound(field_name.to_string())),
             },
@@ -252,7 +269,16 @@ impl ItemType {
         match self {
             ItemType::Login(_) => vec!["username", "password", "url", "notes"],
             ItemType::APIKey(_) => vec!["name", "key", "provider"],
-            ItemType::SSHKey(_) => vec!["name", "public_key", "private_key", "passphrase"],
+            ItemType::SSHKey(_) => {
+                vec![
+                    "name",
+                    "public_key",
+                    "private_key",
+                    "passphrase",
+                    "comment",
+                    "allowed_hosts",
+                ]
+            }
             ItemType::SecureNote(_) => vec!["title", "content"],
             ItemType::Server(_) => vec!["hostname", "port", "username", "password", "notes"],
             ItemType::Database(_) => {
@@ -320,6 +346,8 @@ mod tests {
             public_key: "ssh-rsa AAAA...".to_string(),
             private_key: "-----BEGIN...".to_string(),
             passphrase: Some("phrase".to_string()),
+            comment: Some("server key".to_string()),
+            allowed_hosts: vec!["github.com".to_string()],
         });
         assert_eq!(item.get_field("private_key").unwrap(), "-----BEGIN...");
         item.set_field("private_key", "new-private-key").unwrap();

@@ -60,13 +60,22 @@ pub enum Commands {
     Edit { id: String },
     /// Delete an item.
     Delete { id: String },
-    /// Export an encrypted backup.
+    /// Backup management commands.
+    #[command(subcommand)]
+    Backup(BackupCommands),
+    /// Export vault data (encrypted by default, plaintext with --dangerous).
     Export {
-        /// Optional output path for the encrypted backup JSON.
+        /// Export format: encrypted (default) or plaintext.
+        #[arg(long, default_value = "encrypted")]
+        format: String,
+        /// Required to export plaintext. Acknowledges the danger.
+        #[arg(long)]
+        dangerous: bool,
+        /// Optional output path.
         #[arg(short, long)]
         output: Option<std::path::PathBuf>,
     },
-    /// Import an encrypted backup.
+    /// Import an encrypted backup or CSV file.
     Import { file: std::path::PathBuf },
     /// Sync with a remote server.
     Sync {
@@ -80,6 +89,11 @@ pub enum Commands {
         #[arg(long, default_value = "last-write-wins")]
         strategy: String,
     },
+    /// SSH key management commands.
+    #[command(subcommand)]
+    Ssh(SshCommands),
+    /// Start the SSH agent (not yet integrated with OpenSSH).
+    SshAgent,
 }
 
 /// Item subcommands.
@@ -89,6 +103,26 @@ pub enum ItemCommands {
     List,
     /// Get item details (redacted by default).
     Get { id: String },
+}
+
+/// SSH subcommands.
+#[derive(Debug, Subcommand)]
+pub enum SshCommands {
+    /// Display the public key for an SSH key item.
+    PublicKey { target: String },
+}
+
+/// Backup subcommands.
+#[derive(Debug, Subcommand)]
+pub enum BackupCommands {
+    /// Export an encrypted backup.
+    Export {
+        /// Optional output path for the encrypted backup JSON.
+        #[arg(short, long)]
+        output: Option<std::path::PathBuf>,
+    },
+    /// Import an encrypted backup.
+    Import { file: std::path::PathBuf },
 }
 
 /// Run the parsed CLI command.
@@ -108,13 +142,27 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Add { item_type } => commands::add::run(&context, &item_type).await,
         Commands::Edit { id } => commands::edit::run(&context, &id).await,
         Commands::Delete { id } => commands::delete::run(&context, &id).await,
-        Commands::Export { output } => commands::export::run(&context, output).await,
+        Commands::Backup(BackupCommands::Export { output }) => {
+            commands::export::run_encrypted(&context, output).await
+        }
+        Commands::Backup(BackupCommands::Import { file }) => {
+            commands::import::run(&context, &file).await
+        }
+        Commands::Export {
+            format,
+            dangerous,
+            output,
+        } => commands::export::run(&context, &format, dangerous, output).await,
         Commands::Import { file } => commands::import::run(&context, &file).await,
         Commands::Sync {
             server,
             api_key,
             strategy,
         } => commands::sync::run(&context, server, api_key, parse_strategy(&strategy)).await,
+        Commands::Ssh(SshCommands::PublicKey { target }) => {
+            commands::ssh::run_public_key(&context, &target).await
+        }
+        Commands::SshAgent => commands::ssh::run_agent().await,
     }
 }
 

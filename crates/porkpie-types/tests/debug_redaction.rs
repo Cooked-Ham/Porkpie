@@ -37,11 +37,15 @@ fn ssh_key_secret_debug_redacts_private_key() {
         public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5".to_string(),
         private_key: "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----".to_string(),
         passphrase: Some("my_ssh_passphrase".to_string()),
+        comment: Some("prod key".to_string()),
+        allowed_hosts: vec!["prod.example.com".to_string()],
     };
     let debug = format!("{:?}", secret);
     assert!(!debug.contains("BEGIN OPENSSH PRIVATE KEY"));
     assert!(!debug.contains("my_ssh_passphrase"));
     assert!(!debug.contains("AAAAC3NzaC1lZDI1NTE5"));
+    assert!(!debug.contains("prod key"));
+    assert!(!debug.contains("prod.example.com"));
     assert!(debug.contains("[redacted]"));
 }
 
@@ -132,6 +136,8 @@ fn item_type_debug_redacts_all_variants() {
             public_key: "pub".to_string(),
             private_key: "priv".to_string(),
             passphrase: None,
+            comment: None,
+            allowed_hosts: vec![],
         }),
         ItemType::SecureNote(SecureNoteSecret {
             title: "t".to_string(),

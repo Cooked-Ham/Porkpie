@@ -91,6 +91,8 @@ pub struct SSHKeySecret {
     pub public_key: String,
     pub private_key: String,
     pub passphrase: Option<String>,
+    pub comment: Option<String>,
+    pub allowed_hosts: Vec<String>,
 }
 
 impl fmt::Debug for SSHKeySecret {
@@ -100,6 +102,8 @@ impl fmt::Debug for SSHKeySecret {
             .field("public_key", &"[redacted]")
             .field("private_key", &"[redacted]")
             .field("passphrase", &"[redacted]")
+            .field("comment", &"[redacted]")
+            .field("allowed_hosts", &"[redacted]")
             .finish()
     }
 }

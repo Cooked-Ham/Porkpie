@@ -481,6 +481,7 @@ fn decompose_item(item: &DecryptedItem) -> (String, String, String, String, Stri
             a = secret.public_key.clone();
             b = secret.private_key.clone();
             c = secret.passphrase.clone().unwrap_or_default();
+            notes = secret.comment.clone().unwrap_or_default();
         }
         ItemType::SecureNote(secret) => {
             label = "SecureNote".to_string();
@@ -568,6 +569,12 @@ fn build_item_type(
             } else {
                 Some(field_c.to_string())
             },
+            comment: if notes.is_empty() {
+                None
+            } else {
+                Some(notes.to_string())
+            },
+            allowed_hosts: vec![],
         })),
         "SecureNote" => Ok(ItemType::SecureNote(SecureNoteSecret {
             title: title.to_string(),
