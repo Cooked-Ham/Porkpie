@@ -124,18 +124,51 @@ pub async fn rotate_local_secret(context: &CommandContext) -> Result<()> {
     let new_wrapped = porkpie_crypto::wrap_vault_key(&new_master_key, vault_key)
         .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?;
 
+    // Show recovery kit and require confirmation before proceeding.
+    println!("NEW RECOVERY KIT (save this securely):");
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&recovery_kit)
+            .map_err(|e| CliError::Io(std::io::Error::other(e)))?
+    );
+    if !crate::interactive::confirm_action(
+        "Have you saved the new recovery kit? This is the only copy.",
+    )? {
+        println!("Cancelled. No changes were made.");
+        return Ok(());
+    }
+
     // Store new secret key in keychain.
     let store = crate::secret_store::default_secret_store();
     if let Some(ref s) = store {
         s.store_local_secret_key(&vault_id, &new_secret_key)
             .map_err(|e| {
                 CliError::InvalidArgument(format!(
-                    "failed to store new secret key in keychain: {e}"
+                    "failed to store new secret key in keychain: {e}. Aborting."
                 ))
             })?;
+
+        // Verify the keychain can load the new key and it matches.
+        let loaded = s
+            .load_local_secret_key(&vault_id)
+            .map_err(|e| {
+                CliError::InvalidArgument(format!(
+                    "failed to verify new secret key in keychain: {e}. Aborting."
+                ))
+            })?
+            .ok_or_else(|| {
+                CliError::InvalidArgument(
+                    "new secret key missing from keychain after store. Aborting.".to_string(),
+                )
+            })?;
+        if loaded.to_hex() != new_secret_key.to_hex() {
+            return Err(CliError::InvalidArgument(
+                "keychain verification failed: stored key does not match. Aborting.".to_string(),
+            ));
+        }
     }
 
-    // Update DB wrapped key BEFORE deleting old keychain entry.
+    // Update DB wrapped key only after keychain store + verify succeeds.
     porkpie_store::update_vault_wrapped_key(
         &pool,
         &vault_id,
@@ -145,19 +178,12 @@ pub async fn rotate_local_secret(context: &CommandContext) -> Result<()> {
     .await
     .map_err(CliError::Store)?;
 
-    // Only delete old keychain entry after DB update succeeds.
-    if let Some(ref s) = store {
-        let _ = s.delete_local_secret_key(&vault_id);
-    }
+    // Save session without any secret key material.
+    let session = crate::session::SessionState::unlocked(vault_id);
+    context.save_session(&session)?;
 
     println!("Local secret key rotated.");
-    println!("NEW RECOVERY KIT (save this securely):");
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&recovery_kit)
-            .map_err(|e| CliError::Io(std::io::Error::other(e)))?
-    );
-    println!("WARNING: The old recovery kit is now invalid. Save the new one before locking.");
+    println!("WARNING: The old recovery kit is now invalid.");
 
     Ok(())
 }

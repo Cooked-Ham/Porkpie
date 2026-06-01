@@ -130,7 +130,7 @@ pub enum Commands {
     /// SSH key management commands.
     #[command(subcommand)]
     Ssh(SshCommands),
-    /// Start the SSH agent (not yet integrated with OpenSSH).
+    /// Start the SSH agent.
     SshAgent,
 }
 
@@ -180,7 +180,6 @@ pub enum RecoveryCommands {
         kit: std::path::PathBuf,
     },
     /// Restore a vault from a recovery kit and encrypted backup.
-    #[cfg(feature = "experimental-recovery")]
     Restore {
         /// Path to recovery kit JSON.
         #[arg(long)]
@@ -278,7 +277,6 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Recovery(RecoveryCommands::Verify { kit }) => {
             commands::recovery_cmd::verify(&context, &kit).await
         }
-        #[cfg(feature = "experimental-recovery")]
         Commands::Recovery(RecoveryCommands::Restore { kit, backup }) => {
             commands::recovery_cmd::restore(&context, &kit, &backup).await
         }

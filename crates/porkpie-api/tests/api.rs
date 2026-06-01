@@ -674,7 +674,10 @@ async fn admin_add_api_key_accepts_admin_key() {
     let body: serde_json::Value = response_json(response).await;
     assert_eq!(body["ok"], true);
     assert!(body["key_id"].is_number());
-    assert!(body["key_hash"].is_string());
+    assert!(body["label"].is_string());
+    assert!(body["message"].is_string());
+    // key_hash is intentionally not returned; client already provided the plaintext key
+    assert!(body.get("key_hash").is_none());
 }
 
 #[tokio::test]
@@ -733,4 +736,154 @@ async fn admin_revoke_api_key_accepts_admin_key() {
     assert_eq!(revoke_response.status(), StatusCode::OK);
     let body: serde_json::Value = response_json(revoke_response).await;
     assert_eq!(body["ok"], true);
+}
+
+async fn admin_app_with_pool() -> (axum::Router, sqlx::SqlitePool) {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+    let (_key_id, key_hash) = db::upsert_api_key(&pool, API_KEY, "test")
+        .await
+        .expect("seed api key");
+    db::set_api_key_admin(&pool, &key_hash, true)
+        .await
+        .expect("set admin");
+    (
+        build_router(AppState {
+            pool: pool.clone(),
+            cors_allowed_origins: vec!["https://app.porkpie.love".to_string()],
+        }),
+        pool,
+    )
+}
+
+#[tokio::test]
+async fn admin_revoke_api_key_rejects_self_revoke() {
+    let (app, pool) = admin_app_with_pool().await;
+
+    // Add a second key so the last-key guard doesn't trigger first
+    let add_response = app
+        .clone()
+        .oneshot(json_request(
+            "/api/v1/admin/api-key",
+            &serde_json::json!({
+                "api_key": "second-key-1234567890123456789012345678",
+                "label": "second"
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("add response");
+    assert_eq!(add_response.status(), StatusCode::OK);
+
+    // Get the key_id of the current admin key (API_KEY)
+    let current_hash = db::hash_api_key(API_KEY);
+    let row: (i64,) = sqlx::query_as("SELECT id FROM api_keys WHERE api_key_hash = ?")
+        .bind(&current_hash)
+        .fetch_one(&pool)
+        .await
+        .expect("find current key");
+    let current_key_id = row.0;
+
+    // Try to revoke the current key (self-revoke)
+    let revoke_response = app
+        .oneshot(json_request(
+            "/api/v1/admin/api-key/revoke",
+            &serde_json::json!({
+                "key_id": current_key_id,
+                "force": false
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("revoke response");
+
+    assert_eq!(revoke_response.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = response_json(revoke_response).await;
+    assert!(body["message"]
+        .as_str()
+        .unwrap()
+        .contains("Cannot revoke the API key currently in use"));
+}
+
+#[tokio::test]
+async fn vault_metadata_returns_kdf_params() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+    db::upsert_api_key(&pool, API_KEY, "test")
+        .await
+        .expect("seed api key");
+    let vault_id = VaultId::new().to_string();
+    db::upsert_vault_metadata(&pool, &vault_id)
+        .await
+        .expect("seed vault");
+
+    let app = build_router(AppState {
+        pool: pool.clone(),
+        cors_allowed_origins: vec!["https://app.porkpie.love".to_string()],
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/vault/{vault_id}"))
+                .header(header::AUTHORIZATION, format!("Bearer {API_KEY}"))
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("route response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let meta: porkpie_api::models::VaultMetadataResponse = response_json(response).await;
+    assert_eq!(meta.vault_id, vault_id);
+    assert_eq!(meta.kdf_time_cost, 2); // default
+    assert_eq!(meta.kdf_mem_cost, 19456); // default
+    assert_eq!(meta.kdf_parallelism, 1); // default
+}
+
+#[tokio::test]
+async fn sync_register_persists_kdf_params() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+    db::upsert_api_key(&pool, API_KEY, "test")
+        .await
+        .expect("seed api key");
+    let app = build_router(AppState {
+        pool: pool.clone(),
+        cors_allowed_origins: vec!["https://app.porkpie.love".to_string()],
+    });
+    let vault_id = VaultId::new().to_string();
+
+    let reg = app
+        .oneshot(json_request(
+            "/api/v1/sync/register",
+            &porkpie_api::models::SyncRegisterRequest {
+                vault_id: vault_id.clone(),
+                name: "KdfTest".to_string(),
+                salt: vec![0x01; 32],
+                master_key_wrapped: vec![0x02; 48],
+                created_at: 2000,
+                kdf_time_cost: 8,
+                kdf_mem_cost: 262144,
+                kdf_parallelism: 2,
+            },
+            Some(API_KEY),
+        ))
+        .await
+        .expect("register");
+    assert_eq!(reg.status(), StatusCode::OK);
+
+    let meta = db::load_vault_metadata(&pool, &vault_id)
+        .await
+        .expect("load metadata");
+    assert_eq!(meta.kdf_time_cost, 8);
+    assert_eq!(meta.kdf_mem_cost, 262144);
+    assert_eq!(meta.kdf_parallelism, 2);
 }

@@ -71,7 +71,7 @@ The foundational command-line interface developed via clap, allowing pure termin
 The primary graphical subsystem integrating the Dioxus crate for responsive web, desktop, and hybrid interactions spanning search components and vault visualizations.
 
 ### porkpie-agent
-An SSH signer foundation providing the `SshSigner` trait (algorithm, public key bytes, sign), `Ed25519Signer` in-memory implementation backed by `ed25519-dalek`, and `HostKeyPolicy` structs for restricting SSH key usage to allowed hosts. OpenSSH agent socket/named-pipe integration is not yet implemented.
+An SSH signer foundation providing the `SshSigner` trait (algorithm, public key bytes, sign), `Ed25519Signer` in-memory implementation backed by `ed25519-dalek`, and `HostKeyPolicy` structs for restricting SSH key usage to allowed hosts. The `porkpie ssh-agent` CLI command starts a real OpenSSH-compatible Unix domain socket agent. Windows named pipes are not yet supported.
 
 ### porkpie-import
 A segmented parsing library focused entirely on safely consuming CSVs, JSON arrays, and external tool file structures, transforming them efficiently into Porkpie unencrypted objects prior to storage saves.

@@ -22,6 +22,7 @@ Porkpie cannot be called an MVP until every gate below passes. These gates are t
 - [x] No static nonces, no reused nonces, no hardcoded keys.
 - [x] Wrong password fails decryption (tested).
 - [x] Tampered ciphertext fails decryption (tested).
+- [x] Admin API key cannot self-revoke (tested).
 - [ ] Security audit or review has been scheduled or completed.
   - *Gap:* No external security audit has been performed. This is the single blocker for the Security Gate.
 

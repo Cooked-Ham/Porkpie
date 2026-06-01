@@ -8,7 +8,7 @@ Method: Deep file inspection + subagent parallel verification + manual cross-che
 
 ## Executive Summary
 
-**138 tests pass. Build is clean. No critical security failures in production code.**
+**226 tests pass. Build is clean. No critical security failures in production code.**
 
 However, **significant documentation inaccuracies and implementation gaps exist** across the doc-to-code boundary. The `STATUS.md` root document and several phase documents contain claims that are either outright false, partially implemented, or reference functions that exist in different crates than claimed.
 
@@ -267,7 +267,7 @@ It does **NOT** verify that the underlying heap memory is zeroized. The `zeroize
 ### M4. `STATUS.md` Counts Tests Incorrectly in Historical Note
 
 **File:** `STATUS.md` (root)
-**Line:** "After Phase 11, **138 tests pass** — the 132 tests from Phase 10 plus 6 new import/export safety tests"
+**Line:** "After Phase 11, **226 tests pass** — the 132 tests from Phase 10 plus 6 new import/export safety tests, plus additional tests from subsequent fixes (KDF params, self-revoke guard, rotate_local_secret keychain safety, vault metadata retrieval)."
 **Math:** 132 + 6 = 138. This is correct.
 **But:** The document also says "After Phase 07, the **workspace tests still pass at 108** — Phase 07 added no new unit tests." This is contradictory with the earlier progression. Phase 08 added 1 test (bidirectional sync), Phase 09 added 10 tests + 4 CLI tests = 14, Phase 10 added 10 tests, Phase 11 added 6 tests. 108 + 1 + 14 + 10 + 6 = 139. But the count is 138. One test may have been removed or merged.
 
@@ -406,7 +406,7 @@ It does **NOT** verify that the underlying heap memory is zeroized. The `zeroize
 2. **Web shell lacks real vault storage** — Documented in `STATUS.md` and `README.md`.
 3. **No key rotation mechanism** — Documented in `STATUS.md`.
 4. **Argon2id parameters are conservative** — Documented in `STATUS.md`.
-5. **SSH agent not implemented** — Documented in `STATUS.md`.
+5. **SSH agent partially implemented** — Unix domain socket agent works; Windows named pipes not supported.
 6. **No system tray / global hotkeys** — Documented in `STATUS.md`.
 7. **No browser extension** — Documented in `STATUS.md`.
 8. **No recovery code workflows** — Documented in `STATUS.md`.

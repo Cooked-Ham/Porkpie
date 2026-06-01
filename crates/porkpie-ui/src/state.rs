@@ -24,6 +24,15 @@ pub enum Theme {
     Dark,
 }
 
+impl std::fmt::Display for Theme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Theme::Light => write!(f, "light"),
+            Theme::Dark => write!(f, "dark"),
+        }
+    }
+}
+
 /// User-configurable app settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SettingsState {

@@ -138,11 +138,11 @@ Additional validation:
 - `AgentIdentity` holds a signer and comment.
 - `Ed25519Signer` produces valid signatures verified by `ed25519_dalek::Verifier`.
 - Protocol uses big-endian uint32 length-prefix framing.
-- `porkpie ssh-agent` command exists (prints honest status about integration level).
+- `porkpie ssh-agent` command starts a real Unix domain socket agent.
 
 ### Phase 07 — Recovery and Emergency Access
 - `porkpie recovery verify <kit>` — validates recovery kit structure without printing secrets.
-- `porkpie recovery restore <kit> <backup>` — scaffold for restore from recovery kit.
+- `porkpie recovery restore <kit> <backup>` — reads recovery kit, decrypts backup, restores vault + items to local DB, stores secret key in keychain.
 - Recovery kit contains: vault_id, local_secret_key (hex), created_at, instructions, warning.
 - `RecoveryKit` custom `Debug` redacts the local secret key.
 
@@ -278,7 +278,7 @@ Additional validation:
 3. **`porkpie read` prints secrets to stdout** — Shell history and terminal scrollback can capture output.
 4. **No key rotation mechanism** — If vault key is compromised, only recourse is new vault.
 5. **Argon2id parameters are conservative defaults** — `time_cost=2, mem_cost=19456 KiB, parallelism=1`.
-6. **SSH agent socket not integrated** — Protocol implemented but no Unix domain socket / Windows named pipe.
+6. **SSH agent Windows not supported** — Unix domain socket integration works; Windows named pipes not yet implemented.
 
 ## Real Credentials Safe to Use?
 

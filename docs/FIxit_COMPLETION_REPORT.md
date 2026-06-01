@@ -292,7 +292,7 @@ The user noted that 2 files were mentioned but not actually changed. These were 
 6. **Argon2id parameters are conservative** — `time_cost=2, mem_cost=19456 KiB, parallelism=1`. Production may want higher values.
 
 ### Low
-7. **SSH agent not implemented** — `SshSigner` trait and `Ed25519Signer` are real and tested, but no OpenSSH agent socket/named-pipe integration.
+7. **SSH agent Unix implemented** — `SshSigner` trait, `Ed25519Signer`, and Unix domain socket agent are real and tested. Windows named pipes not yet implemented.
 8. **No system tray / global hotkeys / clipboard auto-clear** — Desktop integration beyond basic launch.
 9. **No browser extension / autofill** — Web integration beyond basic vault UI.
 10. **No third-party importers** — 1Password, Bitwarden, LastPass native formats not supported.

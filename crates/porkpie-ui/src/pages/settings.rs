@@ -2,9 +2,9 @@ use crate::components::button::Button;
 use crate::state::AppState;
 use dioxus::prelude::*;
 
-/// Settings screen. Currently exposes lock timeout and theme. Theme
-/// toggling is wired to state but does not yet change the live CSS
-/// variables; this is honest about the gap.
+/// Settings screen. Exposes lock timeout and theme. Theme toggling is
+/// wired to state and changes the live CSS variables via the `data-theme`
+/// attribute on the app-shell.
 pub fn SettingsPage<'a>(cx: Scope<'a, SettingsPageProps>) -> Element<'a> {
     let state_ref = &cx.props.state;
     let lock_minutes = use_state(cx, || state_ref.with(|s| s.settings.lock_timeout_minutes));
@@ -67,14 +67,11 @@ pub fn SettingsPage<'a>(cx: Scope<'a, SettingsPageProps>) -> Element<'a> {
                     span { "Theme" }
                     select {
                         class: "input",
-                        value: "dark",
+                        value: "{theme}",
                         onchange: on_theme_change,
                         option { value: "dark", "Dark" }
                         option { value: "light", "Light" }
                     }
-                }
-                div { class: "notice",
-                    "Theme switching updates the configured theme but does not yet re-render the live CSS variables. Restart the app to see the change."
                 }
                 div { class: "about",
                     h2 { "About Porkpie" }

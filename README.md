@@ -41,7 +41,7 @@ porkpie vault calibrate-kdf 500
 porkpie recovery verify <kit>
 ```
 
-**Note:** `porkpie recovery restore` is not implemented yet. Use `porkpie init` + `porkpie import` for manual restore.
+**Note:** `porkpie recovery restore` is now implemented. Pass `--kit` and `--backup` to restore a vault from a recovery kit and encrypted backup.
 
 CSV imports use the columns `item_type,title,username,password,notes`. Encrypted backups use `.json.enc` files and contain encrypted item blobs only.
 

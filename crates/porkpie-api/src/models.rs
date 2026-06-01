@@ -23,6 +23,9 @@ pub struct SyncRegisterRequest {
     pub salt: Vec<u8>,
     pub master_key_wrapped: Vec<u8>,
     pub created_at: i64,
+    pub kdf_time_cost: u32,
+    pub kdf_mem_cost: u32,
+    pub kdf_parallelism: u32,
 }
 
 /// Response body for vault registration.
@@ -62,4 +65,7 @@ pub struct VaultMetadataResponse {
     pub master_key_wrapped: Vec<u8>,
     pub created_at: i64,
     pub sync_revision: u64,
+    pub kdf_time_cost: u32,
+    pub kdf_mem_cost: u32,
+    pub kdf_parallelism: u32,
 }

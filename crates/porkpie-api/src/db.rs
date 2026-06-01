@@ -30,6 +30,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
     migrate_items_to_composite_pk(pool).await?;
     migrate_api_keys_metadata(pool).await?;
+    migrate_vault_kdf_columns(pool).await?;
     Ok(())
 }
 
@@ -235,6 +236,7 @@ pub async fn upsert_vault_metadata(pool: &SqlitePool, vault_id: &str) -> Result<
 /// `upsert_vault_metadata()` helper only creates a stub; this
 /// one replaces the salt and wrapped key with real values from
 /// the client.
+#[allow(clippy::too_many_arguments)]
 pub async fn register_vault(
     pool: &SqlitePool,
     vault_id: &str,
@@ -242,17 +244,23 @@ pub async fn register_vault(
     salt: &[u8],
     master_key_wrapped: &[u8],
     created_at: i64,
+    kdf_time_cost: u32,
+    kdf_mem_cost: u32,
+    kdf_parallelism: u32,
 ) -> Result<()> {
     validate_vault_id(vault_id)?;
     sqlx::query(
         r#"
-        INSERT INTO vaults (id, name, created_at, salt, master_key_wrapped, sync_revision)
-        VALUES (?, ?, ?, ?, ?, 0)
+        INSERT INTO vaults (id, name, created_at, salt, master_key_wrapped, sync_revision, kdf_time_cost, kdf_mem_cost, kdf_parallelism)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             salt = excluded.salt,
             master_key_wrapped = excluded.master_key_wrapped,
-            created_at = excluded.created_at
+            created_at = excluded.created_at,
+            kdf_time_cost = excluded.kdf_time_cost,
+            kdf_mem_cost = excluded.kdf_mem_cost,
+            kdf_parallelism = excluded.kdf_parallelism
         "#,
     )
     .bind(vault_id)
@@ -260,6 +268,9 @@ pub async fn register_vault(
     .bind(created_at)
     .bind(salt)
     .bind(master_key_wrapped)
+    .bind(kdf_time_cost)
+    .bind(kdf_mem_cost)
+    .bind(kdf_parallelism)
     .execute(pool)
     .await?;
 
@@ -276,9 +287,9 @@ pub async fn load_vault_metadata(
 ) -> Result<VaultMetadataResponse> {
     validate_vault_exists(pool, vault_id).await?;
 
-    let row = sqlx::query_as::<_, (String, String, i64, Vec<u8>, Vec<u8>, i64)>(
+    let row = sqlx::query_as::<_, (String, String, i64, Vec<u8>, Vec<u8>, i64, i64, i64, i64)>(
         r#"
-        SELECT id, name, created_at, salt, master_key_wrapped, sync_revision
+        SELECT id, name, created_at, salt, master_key_wrapped, sync_revision, kdf_time_cost, kdf_mem_cost, kdf_parallelism
         FROM vaults
         WHERE id = ?
         "#,
@@ -294,6 +305,9 @@ pub async fn load_vault_metadata(
         salt: row.3,
         master_key_wrapped: row.4,
         sync_revision: i64_to_u64(row.5),
+        kdf_time_cost: i64_to_u32(row.6),
+        kdf_mem_cost: i64_to_u32(row.7),
+        kdf_parallelism: i64_to_u32(row.8),
     })
 }
 
@@ -537,6 +551,10 @@ fn i64_to_u64(value: i64) -> u64 {
     u64::try_from(value).unwrap_or(0)
 }
 
+fn i64_to_u32(value: i64) -> u32 {
+    u32::try_from(value).unwrap_or(0)
+}
+
 fn u64_to_i64(value: u64) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
 }
@@ -550,6 +568,9 @@ const MIGRATIONS: &[&str] = &[
         salt BLOB NOT NULL,
         master_key_wrapped BLOB NOT NULL,
         sync_revision INTEGER NOT NULL DEFAULT 0,
+        kdf_time_cost INTEGER NOT NULL DEFAULT 2,
+        kdf_mem_cost INTEGER NOT NULL DEFAULT 19456,
+        kdf_parallelism INTEGER NOT NULL DEFAULT 1,
         created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     "#,
@@ -590,6 +611,34 @@ const MIGRATIONS: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(api_key_hash, active);",
     "CREATE INDEX IF NOT EXISTS idx_audit_vault ON audit_log(vault_id, created_at);",
 ];
+
+async fn migrate_vault_kdf_columns(pool: &SqlitePool) -> Result<()> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'vaults'")
+            .fetch_optional(pool)
+            .await?;
+
+    if let Some((sql,)) = row {
+        if !sql.contains("kdf_time_cost") {
+            sqlx::query("ALTER TABLE vaults ADD COLUMN kdf_time_cost INTEGER NOT NULL DEFAULT 2")
+                .execute(pool)
+                .await?;
+        }
+        if !sql.contains("kdf_mem_cost") {
+            sqlx::query(
+                "ALTER TABLE vaults ADD COLUMN kdf_mem_cost INTEGER NOT NULL DEFAULT 19456",
+            )
+            .execute(pool)
+            .await?;
+        }
+        if !sql.contains("kdf_parallelism") {
+            sqlx::query("ALTER TABLE vaults ADD COLUMN kdf_parallelism INTEGER NOT NULL DEFAULT 1")
+                .execute(pool)
+                .await?;
+        }
+    }
+    Ok(())
+}
 
 async fn migrate_api_keys_metadata(pool: &SqlitePool) -> Result<()> {
     let row: Option<(String,)> =
