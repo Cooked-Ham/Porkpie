@@ -455,6 +455,14 @@ fn prompt_u16(prompt: &str, default: Option<u16>) -> Result<u16> {
     Ok(input.interact_text()?)
 }
 
+/// Confirm a generic action.
+pub fn confirm_action(message: &str) -> Result<bool> {
+    Ok(Confirm::new()
+        .with_prompt(message)
+        .default(false)
+        .interact()?)
+}
+
 /// Ask the user to choose a supported item type.
 pub fn select_item_type() -> Result<&'static str> {
     const TYPES: &[&str] = &[

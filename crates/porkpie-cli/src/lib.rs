@@ -1,8 +1,15 @@
 //! Command-line interface support for Porkpie.
+//!
+//! Security design:
+//! - Secret input uses hidden prompts via `dialoguer::Password`.
+//! - CLI arguments that accept plaintext secrets must carry `--stdin` or `--prompt` alternatives.
+//! - `read` outputs to stdout by design; use `copy` for safer workflows.
+//! - Session state does not store the local secret key; it is stored in the OS keychain.
 
 pub mod commands;
 pub mod errors;
 pub mod interactive;
+pub mod secret_store;
 pub mod session;
 
 use clap::{Parser, Subcommand};
@@ -40,7 +47,15 @@ pub enum Commands {
     #[command(subcommand)]
     Item(ItemCommands),
     /// Read a single field value from a pie:// URI.
-    Read { uri: String },
+    Read {
+        uri: String,
+        /// Omit trailing newline (useful for scripts).
+        #[arg(long)]
+        no_newline: bool,
+        /// Suppress TTY warning.
+        #[arg(long)]
+        quiet: bool,
+    },
     /// Write a value to a single field via pie:// URI.
     /// WARNING: passing the value as a CLI argument exposes it to shell history and process lists.
     /// Use --stdin or --prompt for safer secret entry.
@@ -56,7 +71,12 @@ pub enum Commands {
         prompt: bool,
     },
     /// Copy a field value to clipboard via pie:// URI.
-    Copy { uri: String },
+    Copy {
+        uri: String,
+        /// Clear clipboard after N seconds (0 disables).
+        #[arg(long, value_name = "SECONDS")]
+        clear_after: Option<u64>,
+    },
     /// Run a command with secrets injected as environment variables.
     Run {
         /// Environment variable mappings in the form NAME=pie://vault/item/field
@@ -72,6 +92,12 @@ pub enum Commands {
     Edit { id: String },
     /// Delete an item.
     Delete { id: String },
+    /// Vault management commands.
+    #[command(subcommand)]
+    Vault(VaultCommands),
+    /// Recovery management commands.
+    #[command(subcommand)]
+    Recovery(RecoveryCommands),
     /// Backup management commands.
     #[command(subcommand)]
     Backup(BackupCommands),
@@ -117,6 +143,53 @@ pub enum ItemCommands {
     Get { id: String },
 }
 
+/// Vault subcommands.
+#[derive(Debug, Subcommand)]
+pub enum VaultCommands {
+    /// Change the master password (rewraps vault key, does not re-encrypt items).
+    ChangePassword,
+    /// Rotate the local secret key (generates new key, new recovery kit).
+    RotateLocalSecret,
+    /// Rotate the vault key (re-encrypts all items). Requires backup first.
+    RotateKey {
+        /// Skip automatic backup before rotation.
+        #[arg(long)]
+        skip_backup: bool,
+    },
+    /// Calibrate Argon2id parameters to a target unlock time.
+    CalibrateKdf {
+        /// Target unlock time in milliseconds.
+        #[arg(long, default_value = "750")]
+        target_ms: u64,
+    },
+    /// Upgrade KDF profile (e.g., standard to hardened).
+    UpgradeKdf {
+        /// Profile name: low-memory, standard, hardened, paranoid.
+        #[arg(long)]
+        profile: String,
+    },
+}
+
+/// Recovery subcommands.
+#[derive(Debug, Subcommand)]
+pub enum RecoveryCommands {
+    /// Verify a recovery kit structure without printing secrets.
+    Verify {
+        /// Path to recovery kit JSON.
+        #[arg(long)]
+        kit: std::path::PathBuf,
+    },
+    /// Restore a vault from a recovery kit and encrypted backup.
+    Restore {
+        /// Path to recovery kit JSON.
+        #[arg(long)]
+        kit: std::path::PathBuf,
+        /// Path to encrypted backup.
+        #[arg(long)]
+        backup: std::path::PathBuf,
+    },
+}
+
 /// SSH subcommands.
 #[derive(Debug, Subcommand)]
 pub enum SshCommands {
@@ -147,7 +220,11 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Lock => commands::lock::run(&context).await,
         Commands::Item(ItemCommands::List) => commands::list::run(&context).await,
         Commands::Item(ItemCommands::Get { id }) => commands::get::run(&context, &id).await,
-        Commands::Read { uri } => commands::read::run(&context, &uri).await,
+        Commands::Read {
+            uri,
+            no_newline,
+            quiet,
+        } => commands::read::run(&context, &uri, no_newline, quiet).await,
         Commands::Write {
             uri,
             value,
@@ -175,11 +252,34 @@ pub async fn run(cli: Cli) -> Result<()> {
             };
             commands::write::run(&context, &uri, &value).await
         }
-        Commands::Copy { uri } => commands::copy::run(&context, &uri).await,
+        Commands::Copy { uri, clear_after } => {
+            commands::copy::run(&context, &uri, clear_after).await
+        }
         Commands::Run { env, command } => commands::run_cmd::run(&context, env, command).await,
         Commands::Add { item_type } => commands::add::run(&context, &item_type).await,
         Commands::Edit { id } => commands::edit::run(&context, &id).await,
         Commands::Delete { id } => commands::delete::run(&context, &id).await,
+        Commands::Vault(VaultCommands::ChangePassword) => {
+            commands::vault_cmd::change_password(&context).await
+        }
+        Commands::Vault(VaultCommands::RotateLocalSecret) => {
+            commands::vault_cmd::rotate_local_secret(&context).await
+        }
+        Commands::Vault(VaultCommands::RotateKey { skip_backup }) => {
+            commands::vault_cmd::rotate_key(&context, skip_backup).await
+        }
+        Commands::Vault(VaultCommands::CalibrateKdf { target_ms }) => {
+            commands::vault_cmd::calibrate_kdf(&context, target_ms).await
+        }
+        Commands::Vault(VaultCommands::UpgradeKdf { profile }) => {
+            commands::vault_cmd::upgrade_kdf(&context, &profile).await
+        }
+        Commands::Recovery(RecoveryCommands::Verify { kit }) => {
+            commands::recovery_cmd::verify(&context, &kit).await
+        }
+        Commands::Recovery(RecoveryCommands::Restore { kit, backup }) => {
+            commands::recovery_cmd::restore(&context, &kit, &backup).await
+        }
         Commands::Backup(BackupCommands::Export { output }) => {
             commands::export::run_encrypted(&context, output).await
         }

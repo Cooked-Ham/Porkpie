@@ -17,10 +17,12 @@ pub mod init;
 pub mod list;
 pub mod lock;
 pub mod read;
+pub mod recovery_cmd;
 pub mod run_cmd;
 pub mod ssh;
 pub mod sync;
 pub mod unlock;
+pub mod vault_cmd;
 pub mod write;
 
 const DEFAULT_DATABASE_URL: &str = "sqlite:porkpie.db";

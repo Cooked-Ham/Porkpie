@@ -36,10 +36,22 @@ pub fn build_router(state: AppState) -> Router {
             auth::require_api_key,
         ));
 
+    let admin_routes = Router::new()
+        .route("/api/v1/admin/api-key", post(handlers::admin_add_api_key))
+        .route(
+            "/api/v1/admin/api-key/revoke",
+            post(handlers::admin_revoke_api_key),
+        )
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_api_key,
+        ));
+
     Router::new()
         .route("/api/v1/health", get(handlers::health))
         .route("/api/v1/status", get(handlers::status))
         .merge(protected_routes)
+        .merge(admin_routes)
         .layer(cors_layer)
         .with_state(state)
 }

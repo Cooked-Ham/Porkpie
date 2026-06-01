@@ -127,12 +127,17 @@ pub async fn api_key_exists(pool: &SqlitePool, api_key: &str) -> Result<bool> {
 /// Deactivate an API key so it can no longer authenticate.
 pub async fn revoke_api_key(pool: &SqlitePool, api_key: &str) -> Result<()> {
     let key_hash = hash_api_key(api_key);
+    revoke_api_key_by_hash(pool, &key_hash).await
+}
+
+/// Deactivate an API key by its pre-computed hash.
+pub async fn revoke_api_key_by_hash(pool: &SqlitePool, key_hash: &str) -> Result<()> {
     sqlx::query(
         r#"
         UPDATE api_keys SET active = 0 WHERE api_key_hash = ?
         "#,
     )
-    .bind(&key_hash)
+    .bind(key_hash)
     .execute(pool)
     .await?;
 

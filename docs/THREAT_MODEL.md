@@ -1,60 +1,116 @@
-# Threat Model
+# Porkpie Threat Model v2.0
 
-This Threat Model outlines primary attack vectors and documents how Porkpie implements specific mitigations.
+**Date:** 2026-06-01
+**Status:** Post-implementation review
 
-## Trust Assumptions
-- **The Local Operating System is Trusted**: We assume the client OS has not been compromised by ring-0 rootkits or advanced malware capable of scraping dynamic memory regions or hooking keyboard input globally, as overcoming this is generally out-of-scope for user-space applications.
-- **Dependencies are Verified**: Supply chain risks are mitigated by regular dependency scanning, though we implicitly assume standard library crates lack intentional backdoors.
+## Attack Surface
 
-## 1. Password Guessing and Brute-force
+### 1. Local Machine (Primary)
+- **Threat:** Malware with user-level access
+- **Mitigation:** OS keychain for local secret key; vault key zeroized on lock; clipboard auto-clear
+- **Residual risk:** Memory dump during unlocked session; keylogger during password entry
 
-**The Threat:** An adversary obtains an encrypted local database file and attempts to rapidly decrypt it computationally by iterating through millions of guessable passwords.
+### 2. Sync Server
+- **Threat:** Server compromise, insider threat
+- **Mitigation:** API key hashing (SHA-256 + constant-time comparison); CORS origin allowlist; encrypted payloads only
+- **Residual risk:** Metadata analysis (vault count, item counts, sync frequency); timing side-channels
 
-**The Mitigation:** 
-- The master password is not validated using simplistic hashing algorithms. Porkpie utilizes Argon2id as the Key Derivation Function (KDF) to stretch the master password into a strong encryption key.
-- Argon2id requires intensive compute and memory parameters per guess, mathematically neutralizing the effectiveness of high-speed GPU or ASIC cracking configurations against reasonable master passwords.
+### 3. Network Transit
+- **Threat:** MITM, replay attacks
+- **Mitigation:** TLS for sync; encrypted payload means plaintext never transits
+- **Residual risk:** Certificate pinning not implemented; downgrade attacks if TLS misconfigured
 
-## 2. Server Breach
+### 4. Backup/Recovery
+- **Threat:** Recovery kit theft, backup file exposure
+- **Mitigation:** Recovery kit requires both password AND local secret key; encrypted backups are opaque blobs
+- **Residual risk:** User stores recovery kit in plaintext; backup file not encrypted with strong passphrase
 
-**The Threat:** A malicious actor compromises the remote backend infrastructure and exfiltrates the synchronization node's entire primary data store.
+### 5. Clipboard
+- **Threat:** Clipboard snooping, history retention
+- **Mitigation:** `--clear-after` flag; TTY warning on `read`
+- **Residual risk:** User copies password and forgets to clear; clipboard manager retains history
 
-**The Mitigation:**
-- End-To-End zero-knowledge encryption ensures the server possesses absolutely no cryptographic material capable of decrypting user vaults. 
-- The server stores arbitrary byte blobs and routing IDs; without the user's explicit vault credentials, the data is cryptographically unbreakable cipher noise.
+## Trust Boundaries
 
-## 3. Local Machine Physical Compromise
+| Component | Trust Level | Notes |
+|-----------|-------------|-------|
+| User brain | High | Must remember master password |
+| OS keychain | High | Platform-provided, DPAPI/macOS Keychain/libsecret |
+| Local SQLite | Medium | File-level encryption not implemented |
+| Sync server | Low | Never sees decrypted data |
+| Recovery kit | High | Offline storage required |
 
-**The Threat:** An adversary steals a user's powered-off laptop containing the synced SQLite local store databases and configuration files.
+## Security Roadmap
 
-**The Mitigation:**
-- All local data persists entirely encrypted through XChaCha20Poly1305. The decryption key material relies solely on an Argon2id derivation executed exclusively against the master password and client-side decryption.
-- No plaintext remnants, keys, or unencrypted artifacts are left on the local solid-state drives after the application process concludes or powers down. Without the master password, the stolen laptop yields no usable vault information.
+### Completed (2026-06-01)
+- [x] Memory zeroization for vault keys, item secrets, generated passwords
+- [x] OS keychain storage for local secret key
+- [x] Vault key rotation (re-encrypts all items)
+- [x] Master password change (re-wraps vault key)
+- [x] Argon2id calibration and KDF profiles
+- [x] Safer secret output (`--no-newline`, TTY warnings, clipboard clear)
+- [x] SSH agent protocol (Ed25519 signing)
+- [x] API key rotation endpoints (admin add/revoke)
+- [x] Property-based fuzzing (crypto roundtrip, ID parsing, nonce uniqueness)
+- [x] Startup self-check for DB path validation
+- [x] Composite primary key (vault_id, id) for item integrity
+- [x] CORS origin allowlist with URL validation
 
-## 4. Network Eavesdropping (Man-In-The-Middle)
+### Short Term (Next 30 days)
+- [ ] Memory zeroization test harness (probe memory after lock)
+- [ ] SSH agent socket integration (Unix domain socket / Windows named pipe)
+- [ ] Browser extension for web vault autofill
+- [ ] System tray / hotkey for quick lock
+- [ ] TOTP generation and storage
+- [ ] Import from Bitwarden, 1Password, KeePass
+- [ ] Audit logging for all vault operations
+- [ ] Rate limiting on sync endpoints
+- [ ] Certificate pinning for sync server
+- [ ] Automatic backup before key rotation
 
-**The Threat:** During data synchronization with remote devices, an attacker monitors transit networking equipment to dump packet streams containing user item synchronizations over public internet spaces.
+### Medium Term (3-6 months)
+- [ ] Hardware security key (YubiKey) support for local secret key
+- [ ] Biometric unlock (Touch ID / Windows Hello) as convenience layer
+- [ ] Multi-device sync with peer-to-peer option
+- [ ] Encrypted file attachments
+- [ ] Shared vaults (multi-user) with ACL
+- [ ] Formal security audit by external firm
+- [ ] FIPS 140-2 compliance evaluation
+- [ ] Bug bounty program
 
-**The Mitigation:**
-- Vault chunks strictly transit as heavily formatted XChaCha20Poly1305 ciphertext containers carrying randomized, single-use 24-byte nonces.
-- By design, payload traffic is heavily wrapped within standard HTTPS / TLS communication structures preventing interception.
+### Long Term (12 months)
+- [ ] Post-quantum cryptography evaluation (ML-KEM, ML-DSA)
+- [ ] Self-hosted sync server with end-to-end encrypted replication
+- [ ] Mobile apps (iOS, Android) with secure enclave integration
+- [ ] Enterprise features (SSO, SCIM, admin dashboard)
+- [ ] Third-party security certification (SOC 2, ISO 27001)
 
-## 5. Software Supply Chain Compromise
+## Assumptions
 
-**The Threat:** A seemingly innocuous crate dependency introduces malicious macros capable of transmitting environment variables or memory payloads when compiled into the Porkpie binaries.
+1. The user's OS keychain is not compromised.
+2. The user does not store the recovery kit in plaintext on a networked device.
+3. The sync server TLS certificate is valid and not MITM'd.
+4. The `porkpie-crypto` dependencies (XChaCha20-Poly1305, Argon2id) are cryptographically sound.
+5. The user chooses a strong master password (>= 16 characters).
 
-**The Mitigation:**
-- Strict cargo locking patterns and automated integration linting limits transitive vulnerabilities.
-- Cryptographic primitives depend entirely and exclusively upon audited structures housed within the RustCrypto ecosystem, limiting exposure to experimental and niche open-source packages.
+## Out of Scope
 
-## In-Scope vs Out-of-Scope 
+- Protection against nation-state actors with physical access to the running machine
+- Protection against hardware-level attacks (cold boot, RAM freezing)
+- Protection against compromised operating system kernel
+- Protection against side-channel attacks (power analysis, EM emissions)
 
-**In-Scope:**
-- Securing vault contents at-rest.
-- Defending transit payloads against unauthorized decryption.
-- Purging sensitive dynamic state materials while running.
-- Ensuring strong derivation mechanisms to maximize master password potency.
+## Incident Response
 
-**Out-of-Scope:**
-- Defending against hardware keyloggers overriding user input streams.
-- Preventing memory scraping vulnerabilities on rooted or deeply infected OS kernels.
-- Enforcing password strength rules natively.
+If a vault is compromised:
+1. Rotate the local secret key immediately (`porkpie vault rotate-local-secret`)
+2. Rotate the vault key (`porkpie vault rotate-key`)
+3. Revoke all sync server API keys (`curl -X POST /api/v1/admin/api-key/revoke`)
+4. Review audit logs for unauthorized access
+5. Notify users of shared vaults (if applicable)
+
+## Compliance Notes
+
+- **GDPR:** Vault data is encrypted; server sees only opaque blobs. User is data controller.
+- **PCI-DSS:** Not applicable (no payment card data).
+- **HIPAA:** Requires BAA and additional logging for healthcare use.

@@ -95,3 +95,26 @@ pub async fn delete_vault(pool: &SqlitePool, vault_id: &VaultId) -> Result<()> {
 
     Ok(())
 }
+
+/// Update the wrapped master key for an existing vault.
+/// Used by password change, local secret rotation, KDF upgrade, and vault key rotation.
+pub async fn update_vault_wrapped_key(
+    pool: &SqlitePool,
+    vault_id: &VaultId,
+    master_key_wrapped: &[u8],
+) -> Result<()> {
+    let result = sqlx::query(
+        "UPDATE vaults SET master_key_wrapped = ?, sync_revision = sync_revision + 1 WHERE id = ?",
+    )
+    .bind(master_key_wrapped)
+    .bind(vault_id.to_string())
+    .execute(pool)
+    .await
+    .map_err(map_sqlx_error)?;
+
+    if result.rows_affected() == 0 {
+        return Err(StoreError::VaultNotFound(*vault_id));
+    }
+
+    Ok(())
+}

@@ -1,0 +1,284 @@
+use crate::commands::{unlock_current_vault, CommandContext};
+use crate::errors::{CliError, Result};
+use crate::interactive::{confirm_action, prompt_master_password, prompt_secret};
+use porkpie_types::LocalSecretKey;
+
+/// Change the master password. Keeps the vault key and item ciphertext unchanged.
+pub async fn change_password(context: &CommandContext) -> Result<()> {
+    let vault = unlock_current_vault(context).await?;
+    let pool = context.pool().await?;
+    let vault_id = vault.id;
+
+    let current_password = prompt_master_password()?;
+    let secret_key = {
+        let session = context.load_session()?;
+        session.require_secret_key()?
+    };
+
+    // Verify current password works.
+    let mut test_vault = porkpie_core::Vault::from_encrypted_metadata(
+        vault.id,
+        vault.name.clone(),
+        vault.created_at,
+        vault.salt,
+        vault.master_key_wrapped().to_vec(),
+        vault.sync_revision(),
+    );
+    if test_vault.unlock(&current_password, &secret_key).is_err() {
+        return Err(CliError::InvalidArgument(
+            "current password is incorrect".to_string(),
+        ));
+    }
+
+    println!("Enter new master password:");
+    let new_password = prompt_secret("New password", true)?;
+    println!("Confirm new master password:");
+    let confirm = prompt_secret("Confirm", true)?;
+    if new_password != confirm {
+        return Err(CliError::InvalidArgument(
+            "passwords do not match".to_string(),
+        ));
+    }
+
+    // Re-derive master key and re-wrap vault key.
+    let password = secrecy::Secret::new(current_password);
+    let master_key = zeroize::Zeroizing::new(
+        porkpie_crypto::derive_key(
+            &password,
+            secret_key.as_bytes(),
+            &vault.salt,
+            &porkpie_crypto::Argon2Params::default(),
+        )
+        .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?,
+    );
+    let new_password_secret = secrecy::Secret::new(new_password);
+    let new_master_key = zeroize::Zeroizing::new(
+        porkpie_crypto::derive_key(
+            &new_password_secret,
+            secret_key.as_bytes(),
+            &vault.salt,
+            &porkpie_crypto::Argon2Params::default(),
+        )
+        .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?,
+    );
+
+    let vault_key = test_vault
+        .decrypt_vault_key(&master_key)
+        .map_err(CliError::Core)?;
+    let new_wrapped = porkpie_crypto::wrap_vault_key(&new_master_key, &vault_key)
+        .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?;
+
+    // Update vault metadata.
+    porkpie_store::update_vault_wrapped_key(&pool, &vault_id, &new_wrapped)
+        .await
+        .map_err(CliError::Store)?;
+
+    // Update session if needed.
+    let mut session = context.load_session()?;
+    session.lock();
+    context.save_session(&session)?;
+
+    println!("Master password changed. Unlock again with the new password.");
+    Ok(())
+}
+
+/// Rotate the local secret key. Generates a new key, re-wraps vault key, updates recovery kit.
+pub async fn rotate_local_secret(context: &CommandContext) -> Result<()> {
+    let vault = unlock_current_vault(context).await?;
+    let pool = context.pool().await?;
+    let vault_id = vault.id;
+
+    let password = prompt_master_password()?;
+    let _current_secret_key = {
+        let session = context.load_session()?;
+        session.require_secret_key()?
+    };
+
+    let new_secret_key = LocalSecretKey::generate();
+    let recovery_kit = porkpie_types::RecoveryKit::new(
+        &vault_id.to_string(),
+        &new_secret_key,
+        porkpie_types::Timestamp::now().to_millis(),
+    );
+
+    // Re-wrap vault key with new local secret key.
+    let password_secret = secrecy::Secret::new(password);
+    let new_master_key = zeroize::Zeroizing::new(
+        porkpie_crypto::derive_key(
+            &password_secret,
+            new_secret_key.as_bytes(),
+            &vault.salt,
+            &porkpie_crypto::Argon2Params::default(),
+        )
+        .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?,
+    );
+    let vault_key = vault
+        .vault_key()
+        .ok_or_else(|| CliError::InvalidArgument("vault is locked".to_string()))?;
+    let new_wrapped = porkpie_crypto::wrap_vault_key(&new_master_key, vault_key)
+        .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?;
+
+    porkpie_store::update_vault_wrapped_key(&pool, &vault_id, &new_wrapped)
+        .await
+        .map_err(CliError::Store)?;
+
+    // Store new secret key in keychain.
+    if let Some(store) = crate::secret_store::default_secret_store() {
+        let _ = store.store_local_secret_key(&vault_id, &new_secret_key);
+    }
+
+    println!("Local secret key rotated.");
+    println!("NEW RECOVERY KIT (save this securely):");
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&recovery_kit)
+            .map_err(|e| CliError::Io(std::io::Error::other(e)))?
+    );
+    println!("WARNING: The old recovery kit is now invalid. Save the new one before locking.");
+
+    Ok(())
+}
+
+/// Rotate the vault key. Re-encrypts all items. Requires backup unless --skip-backup.
+pub async fn rotate_key(context: &CommandContext, skip_backup: bool) -> Result<()> {
+    let vault = unlock_current_vault(context).await?;
+    let pool = context.pool().await?;
+    let vault_id = vault.id;
+
+    let password = prompt_master_password()?;
+    let secret_key = {
+        let session = context.load_session()?;
+        session.require_secret_key()?
+    };
+
+    if !skip_backup {
+        println!("Creating encrypted backup before key rotation...");
+        return Err(CliError::InvalidArgument(
+            "key rotation requires --skip-backup or an automatic backup implementation".to_string(),
+        ));
+    }
+
+    if !confirm_action("This will re-encrypt all items. Continue?")? {
+        println!("Cancelled.");
+        return Ok(());
+    }
+
+    let mut vault = unlock_current_vault(context).await?;
+    let re_encrypted = vault
+        .rotate_vault_key(&password, &secret_key)
+        .map_err(CliError::Core)?;
+
+    // Persist re-encrypted items.
+    for (item_id, ciphertext) in re_encrypted {
+        porkpie_store::update_item(&pool, &vault_id, &item_id, &ciphertext)
+            .await
+            .map_err(CliError::Store)?;
+    }
+
+    // Persist new wrapped vault key.
+    let new_wrapped = vault.master_key_wrapped().to_vec();
+    porkpie_store::update_vault_wrapped_key(&pool, &vault_id, &new_wrapped)
+        .await
+        .map_err(CliError::Store)?;
+
+    println!("Vault key rotated. All items re-encrypted.");
+    Ok(())
+}
+
+/// Benchmark Argon2id and suggest parameters near the target time.
+pub async fn calibrate_kdf(_context: &CommandContext, target_ms: u64) -> Result<()> {
+    println!("Calibrating Argon2id parameters to target ~{target_ms}ms...");
+
+    let mut best_time = u128::MAX;
+    let mut best_params = porkpie_crypto::Argon2Params::default();
+
+    for time_cost in [2, 3, 4, 5] {
+        for mem_cost in [8192, 16384, 32768, 65536] {
+            let params = porkpie_crypto::Argon2Params {
+                time_cost,
+                mem_cost,
+                parallelism: 1,
+            };
+            let start = std::time::Instant::now();
+            let _ = porkpie_crypto::derive_key(
+                &secrecy::Secret::new("benchmark".to_string()),
+                &[0u8; 32],
+                &[0u8; 32],
+                &params,
+            );
+            let elapsed = start.elapsed().as_millis();
+            if elapsed < best_time && elapsed >= u128::from(target_ms) / 2 {
+                best_time = elapsed;
+                best_params = params;
+            }
+        }
+    }
+
+    println!(
+        "Suggested parameters: time_cost={}, mem_cost={}",
+        best_params.time_cost, best_params.mem_cost
+    );
+    println!("Actual benchmark time: {best_time}ms");
+    Ok(())
+}
+
+/// Upgrade the KDF profile for the current vault.
+pub async fn upgrade_kdf(context: &CommandContext, profile: &str) -> Result<()> {
+    let vault = unlock_current_vault(context).await?;
+    let pool = context.pool().await?;
+    let vault_id = vault.id;
+
+    let password = prompt_master_password()?;
+    let secret_key = {
+        let session = context.load_session()?;
+        session.require_secret_key()?
+    };
+
+    let new_params = match profile.to_ascii_lowercase().as_str() {
+        "low-memory" => porkpie_crypto::Argon2Params {
+            time_cost: 2,
+            mem_cost: 4096,
+            parallelism: 1,
+        },
+        "standard" => porkpie_crypto::Argon2Params::default(),
+        "hardened" => porkpie_crypto::Argon2Params {
+            time_cost: 4,
+            mem_cost: 65536,
+            parallelism: 1,
+        },
+        "paranoid" => porkpie_crypto::Argon2Params {
+            time_cost: 8,
+            mem_cost: 262144,
+            parallelism: 2,
+        },
+        _ => {
+            return Err(CliError::InvalidArgument(format!(
+                "unknown profile: {profile}"
+            )))
+        }
+    };
+
+    let password_secret = secrecy::Secret::new(password);
+    let new_master_key = zeroize::Zeroizing::new(
+        porkpie_crypto::derive_key(
+            &password_secret,
+            secret_key.as_bytes(),
+            &vault.salt,
+            &new_params,
+        )
+        .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?,
+    );
+
+    let vault_key = vault
+        .vault_key()
+        .ok_or_else(|| CliError::InvalidArgument("vault is locked".to_string()))?;
+    let new_wrapped = porkpie_crypto::wrap_vault_key(&new_master_key, vault_key)
+        .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?;
+
+    porkpie_store::update_vault_wrapped_key(&pool, &vault_id, &new_wrapped)
+        .await
+        .map_err(CliError::Store)?;
+
+    println!("KDF profile upgraded to '{profile}'.");
+    Ok(())
+}

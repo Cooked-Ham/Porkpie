@@ -2,6 +2,7 @@ use crate::vault_store::UnlockedVaultHandle;
 pub use crate::vault_store::{DecryptedItem, ItemSummary, VaultSummary};
 use porkpie_types::{ItemId, Timestamp};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 /// Top-level page shown by the UI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +41,9 @@ impl Default for SettingsState {
 }
 
 /// Password generator form state.
+///
+/// The generated password is zeroized when the generator is reset or the
+/// vault is locked.
 #[derive(Clone, PartialEq, Eq)]
 pub struct PasswordGeneratorState {
     pub length: usize,
@@ -90,6 +94,19 @@ impl PasswordGeneratorState {
             custom_chars: None,
         }
     }
+
+    /// Zeroize the generated password and reset it to empty.
+    pub fn clear_generated(&mut self) {
+        self.generated_password.zeroize();
+        self.generated_password.clear();
+    }
+}
+
+impl Drop for PasswordGeneratorState {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.generated_password.zeroize();
+    }
 }
 
 /// Application state owned by the root component.
@@ -136,10 +153,17 @@ impl Default for AppState {
 
 impl AppState {
     /// Mark the state as locked and purge in-memory decrypted vault state.
+    ///
+    /// Zeroizes any owned secret material before dropping the references:
+    /// - clears the generated password from the password generator,
+    /// - drops the unlocked vault handle (which zeroizes the vault key),
+    /// - clears the current item detail.
     pub fn lock(&mut self) {
         self.current_vault = None;
         self.items.clear();
         self.current_item = None;
+        // Zeroize generated password before dropping the handle.
+        self.password_generator.clear_generated();
         // Drop the unlocked handle so the in-memory vault key is zeroized.
         self.unlocked_handle = None;
         self.screen = Screen::Unlock;

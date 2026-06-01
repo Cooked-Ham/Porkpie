@@ -2,7 +2,7 @@ use crate::commands::{find_item_by_name, parse_pie_uri, unlock_vault_by_name, Co
 use crate::errors::{map_store_error, CliError, Result};
 use porkpie_store::{load_item, load_item_record};
 
-pub async fn run(context: &CommandContext, uri_str: &str) -> Result<()> {
+pub async fn run(context: &CommandContext, uri_str: &str, clear_after: Option<u64>) -> Result<()> {
     let uri = parse_pie_uri(uri_str)?;
     let vault = unlock_vault_by_name(context, &uri.vault_name).await?;
     let pool = context.pool().await?;
@@ -31,6 +31,17 @@ pub async fn run(context: &CommandContext, uri_str: &str) -> Result<()> {
             .set_text(&value)
             .map_err(|e| CliError::Io(std::io::Error::other(e)))?;
         println!("Copied to clipboard: {}", uri.to_string_redacted());
+
+        if let Some(seconds) = clear_after {
+            if seconds > 0 {
+                println!("Clipboard will clear in {seconds}s...");
+                tokio::time::sleep(std::time::Duration::from_secs(seconds)).await;
+                clipboard
+                    .set_text("")
+                    .map_err(|e| CliError::Io(std::io::Error::other(e)))?;
+                println!("Clipboard cleared.");
+            }
+        }
     }
 
     #[cfg(target_arch = "wasm32")]

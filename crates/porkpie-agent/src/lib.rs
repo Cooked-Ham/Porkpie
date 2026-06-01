@@ -4,10 +4,12 @@
 //! in-memory Ed25519 signer.  It does **not** implement OpenSSH agent
 //! socket/named-pipe integration; that is a future phase.
 
+pub mod agent;
 pub mod in_memory_signer;
 pub mod policy;
 pub mod signer;
 
+pub use agent::{Agent, AgentError, AgentIdentity};
 pub use in_memory_signer::Ed25519Signer;
 pub use policy::{HostKeyPolicy, SshKeyIdentity};
 pub use signer::{SignerError, SshSigner};

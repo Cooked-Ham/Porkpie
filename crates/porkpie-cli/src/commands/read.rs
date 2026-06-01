@@ -2,7 +2,12 @@ use crate::commands::{find_item_by_name, parse_pie_uri, unlock_vault_by_name, Co
 use crate::errors::{map_store_error, CliError, Result};
 use porkpie_store::{load_item, load_item_record};
 
-pub async fn run(context: &CommandContext, uri_str: &str) -> Result<()> {
+pub async fn run(
+    context: &CommandContext,
+    uri_str: &str,
+    no_newline: bool,
+    quiet: bool,
+) -> Result<()> {
     let uri = parse_pie_uri(uri_str)?;
     let vault = unlock_vault_by_name(context, &uri.vault_name).await?;
     let pool = context.pool().await?;
@@ -23,6 +28,18 @@ pub async fn run(context: &CommandContext, uri_str: &str) -> Result<()> {
         .get_field(&uri.field_name)
         .map_err(|e| CliError::FieldError(e.to_string()))?;
 
-    println!("{}", value);
+    // TTY warning: if stdout is a terminal and not quiet, warn to stderr.
+    if !quiet && atty::is(atty::Stream::Stdout) {
+        eprintln!(
+            "Warning: printing secret to terminal. Prefer `porkpie copy {}`.",
+            uri.to_string_redacted()
+        );
+    }
+
+    if no_newline {
+        print!("{}", value);
+    } else {
+        println!("{}", value);
+    }
     Ok(())
 }

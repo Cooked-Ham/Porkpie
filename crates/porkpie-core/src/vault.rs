@@ -246,6 +246,31 @@ impl Vault {
         self.is_locked
     }
 
+    /// Access the vault key bytes if the vault is unlocked.
+    /// Returns None if locked.
+    pub fn vault_key(&self) -> Option<&[u8; 32]> {
+        self.vault_key.as_ref().map(|zk| {
+            let slice: &[u8] = zk.as_ref();
+            let array: &[u8; 32] = slice.try_into().expect("vault key is always 32 bytes");
+            array
+        })
+    }
+
+    /// Decrypt the vault key using the master key.
+    /// Used for password change and KDF upgrade operations.
+    pub fn decrypt_vault_key(&self, master_key: &[u8; 32]) -> Result<[u8; 32]> {
+        unwrap_vault_key(master_key, &self.master_key_wrapped).map_err(|error| {
+            if matches!(
+                error,
+                CryptoError::WrongPassword | CryptoError::DecryptionFailed
+            ) {
+                CoreError::WrongPassword
+            } else {
+                CoreError::CryptoError(error)
+            }
+        })
+    }
+
     /// Rotate the vault key: generate a new vault key, re-encrypt all items,
     /// and re-wrap the new vault key with the master key derived from the
     /// password and secret key.

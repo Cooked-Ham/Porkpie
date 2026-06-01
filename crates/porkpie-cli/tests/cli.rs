@@ -301,7 +301,7 @@ fn parses_read_command() {
     let cli = Cli::parse_from(["porkpie", "read", "pie://Personal/GitHub/password"]);
     assert!(matches!(
         cli.command,
-        Commands::Read { uri } if uri == "pie://Personal/GitHub/password"
+        Commands::Read { uri, .. } if uri == "pie://Personal/GitHub/password"
     ));
 }
 

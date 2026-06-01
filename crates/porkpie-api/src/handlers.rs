@@ -101,6 +101,46 @@ pub async fn sync_push(
     }))
 }
 
+/// Admin: add a new API key.
+///
+/// The request body must contain the new API key in plaintext.
+/// The server hashes it and stores the hash for future validation.
+/// The plaintext key is never stored.
+pub async fn admin_add_api_key(
+    State(state): State<AppState>,
+    Json(request): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>> {
+    let api_key = request
+        .get("api_key")
+        .and_then(|v| v.as_str())
+        .ok_or(ApiError::BadRequest("missing api_key".to_string()))?;
+    db::upsert_api_key(&state.pool, api_key).await?;
+    let key_hash = db::hash_api_key(api_key);
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "key_hash": key_hash,
+        "message": "API key added. Store the plaintext key securely; it cannot be recovered."
+    })))
+}
+
+/// Admin: revoke an API key by its hash.
+///
+/// The request body must contain the key_hash to revoke.
+pub async fn admin_revoke_api_key(
+    State(state): State<AppState>,
+    Json(request): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>> {
+    let key_hash = request
+        .get("key_hash")
+        .and_then(|v| v.as_str())
+        .ok_or(ApiError::BadRequest("missing key_hash".to_string()))?;
+    db::revoke_api_key_by_hash(&state.pool, key_hash).await?;
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "message": "API key revoked."
+    })))
+}
+
 fn unix_timestamp() -> i64 {
     match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         Ok(duration) => i64::try_from(duration.as_secs()).unwrap_or(i64::MAX),
