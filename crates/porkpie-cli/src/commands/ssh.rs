@@ -56,7 +56,12 @@ pub async fn run_public_key(context: &CommandContext, target: &str) -> Result<()
 /// not running.
 pub async fn run_agent_start(context: &CommandContext) -> Result<()> {
     let vault = unlock_current_vault(context).await?;
+    run_agent_with_unlocked_vault(&vault).await
+}
 
+/// Run the agent with an already-unlocked vault (used by tests and internal
+/// callers that have already authenticated).
+pub async fn run_agent_with_unlocked_vault(vault: &porkpie_core::Vault) -> Result<()> {
     let items = vault.list_items().map_err(crate::errors::map_core_error)?;
 
     let mut ssh_keys_found = false;
