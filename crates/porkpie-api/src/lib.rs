@@ -44,7 +44,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
-            auth::require_api_key,
+            auth::require_admin_api_key,
         ));
 
     Router::new()

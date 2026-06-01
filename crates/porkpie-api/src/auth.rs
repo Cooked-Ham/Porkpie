@@ -7,6 +7,22 @@ use axum::{
     response::Response,
 };
 
+/// Validate a bearer API key and check admin privileges before admin routes.
+pub async fn require_admin_api_key(
+    State(state): State<AppState>,
+    request: Request<Body>,
+    next: Next,
+) -> std::result::Result<Response, ApiError> {
+    let api_key = bearer_token(&request).ok_or(ApiError::Unauthorized)?;
+    if !db::api_key_exists(&state.pool, api_key).await? {
+        return Err(ApiError::Unauthorized);
+    }
+    if !db::api_key_is_admin(&state.pool, api_key).await? {
+        return Err(ApiError::Forbidden);
+    }
+    Ok(next.run(request).await)
+}
+
 /// Validate a bearer API key before protected sync routes.
 pub async fn require_api_key(
     State(state): State<AppState>,

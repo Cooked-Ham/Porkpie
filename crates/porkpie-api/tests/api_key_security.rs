@@ -214,3 +214,39 @@ async fn multiple_api_keys_can_coexist() {
         .expect("count active");
     assert_eq!(count, 2);
 }
+
+#[tokio::test]
+async fn admin_flag_can_be_set_and_checked() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+
+    let raw_key = "admin-test-key";
+    let (key_id, key_hash) = db::upsert_api_key(&pool, raw_key, "admin")
+        .await
+        .expect("upsert api key");
+
+    // Initially not admin
+    assert!(
+        !db::api_key_is_admin(&pool, raw_key).await.expect("check admin"),
+        "new key should not be admin by default"
+    );
+
+    // Set admin
+    db::set_api_key_admin(&pool, &key_hash, true)
+        .await
+        .expect("set admin");
+
+    assert!(
+        db::api_key_is_admin(&pool, raw_key).await.expect("check admin"),
+        "key should be admin after setting"
+    );
+
+    // Revoke and check
+    db::revoke_api_key_by_id(&pool, key_id).await.expect("revoke");
+    assert!(
+        !db::api_key_is_admin(&pool, raw_key).await.expect("check admin after revoke"),
+        "revoked key should not be admin"
+    );
+}

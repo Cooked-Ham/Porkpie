@@ -183,6 +183,27 @@ pub async fn count_active_api_keys(pool: &SqlitePool) -> Result<i64> {
     Ok(count.0)
 }
 
+/// Check if an API key has admin privileges.
+pub async fn api_key_is_admin(pool: &SqlitePool, api_key: &str) -> Result<bool> {
+    let key_hash = hash_api_key(api_key);
+    let row: Option<(i64,)> =
+        sqlx::query_as("SELECT is_admin FROM api_keys WHERE api_key_hash = ? AND active = 1")
+            .bind(&key_hash)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.map(|r| r.0 != 0).unwrap_or(false))
+}
+
+/// Update the admin flag for an API key by its hash.
+pub async fn set_api_key_admin(pool: &SqlitePool, key_hash: &str, is_admin: bool) -> Result<()> {
+    sqlx::query("UPDATE api_keys SET is_admin = ? WHERE api_key_hash = ?")
+        .bind(if is_admin { 1 } else { 0 })
+        .bind(key_hash)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Update last_used_at for an API key.
 pub async fn touch_api_key(pool: &SqlitePool, api_key: &str) -> Result<()> {
     let key_hash = hash_api_key(api_key);
@@ -551,6 +572,7 @@ const MIGRATIONS: &[&str] = &[
         api_key_hash TEXT NOT NULL UNIQUE,
         label TEXT NOT NULL DEFAULT '',
         active INTEGER NOT NULL DEFAULT 1,
+        is_admin INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         revoked_at INTEGER,
         last_used_at INTEGER
@@ -584,6 +606,11 @@ async fn migrate_api_keys_metadata(pool: &SqlitePool) -> Result<()> {
                 .execute(pool)
                 .await?;
             sqlx::query("ALTER TABLE api_keys ADD COLUMN last_used_at INTEGER")
+                .execute(pool)
+                .await?;
+        }
+        if !sql.contains("is_admin") {
+            sqlx::query("ALTER TABLE api_keys ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
                 .execute(pool)
                 .await?;
         }

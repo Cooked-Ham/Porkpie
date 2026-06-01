@@ -48,7 +48,7 @@ pub async fn change_password(context: &CommandContext) -> Result<()> {
             &password,
             secret_key.as_bytes(),
             &vault.salt,
-            &porkpie_crypto::Argon2Params::default(),
+            vault.kdf_params(),
         )
         .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?,
     );
@@ -58,7 +58,7 @@ pub async fn change_password(context: &CommandContext) -> Result<()> {
             &new_password_secret,
             secret_key.as_bytes(),
             &vault.salt,
-            &porkpie_crypto::Argon2Params::default(),
+            vault.kdf_params(),
         )
         .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?,
     );
@@ -107,14 +107,14 @@ pub async fn rotate_local_secret(context: &CommandContext) -> Result<()> {
         porkpie_types::Timestamp::now().to_millis(),
     );
 
-    // Re-wrap vault key with new local secret key.
+    // Re-wrap vault key with new local secret key using CURRENT stored KDF params.
     let password_secret = secrecy::Secret::new(password);
     let new_master_key = zeroize::Zeroizing::new(
         porkpie_crypto::derive_key(
             &password_secret,
             new_secret_key.as_bytes(),
             &vault.salt,
-            &porkpie_crypto::Argon2Params::default(),
+            vault.kdf_params(),
         )
         .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?,
     );
@@ -124,7 +124,7 @@ pub async fn rotate_local_secret(context: &CommandContext) -> Result<()> {
     let new_wrapped = porkpie_crypto::wrap_vault_key(&new_master_key, vault_key)
         .map_err(|e| CliError::Core(porkpie_core::CoreError::CryptoError(e)))?;
 
-    // Store new secret key in keychain BEFORE updating DB.
+    // Store new secret key in keychain.
     let store = crate::secret_store::default_secret_store();
     if let Some(ref s) = store {
         s.store_local_secret_key(&vault_id, &new_secret_key)
@@ -135,11 +135,7 @@ pub async fn rotate_local_secret(context: &CommandContext) -> Result<()> {
             })?;
     }
 
-    // Delete old key from keychain.
-    if let Some(ref s) = store {
-        let _ = s.delete_local_secret_key(&vault_id);
-    }
-
+    // Update DB wrapped key BEFORE deleting old keychain entry.
     porkpie_store::update_vault_wrapped_key(
         &pool,
         &vault_id,
@@ -148,6 +144,11 @@ pub async fn rotate_local_secret(context: &CommandContext) -> Result<()> {
     )
     .await
     .map_err(CliError::Store)?;
+
+    // Only delete old keychain entry after DB update succeeds.
+    if let Some(ref s) = store {
+        let _ = s.delete_local_secret_key(&vault_id);
+    }
 
     println!("Local secret key rotated.");
     println!("NEW RECOVERY KIT (save this securely):");
@@ -161,7 +162,7 @@ pub async fn rotate_local_secret(context: &CommandContext) -> Result<()> {
     Ok(())
 }
 
-/// Rotate the vault key. Re-encrypts all items. Requires backup unless --skip-backup.
+/// Rotate the vault key. Re-encrypts all items. Creates encrypted backup unless --skip-backup.
 pub async fn rotate_key(context: &CommandContext, skip_backup: bool) -> Result<()> {
     let vault = unlock_current_vault(context).await?;
     let pool = context.pool().await?;
@@ -175,9 +176,39 @@ pub async fn rotate_key(context: &CommandContext, skip_backup: bool) -> Result<(
 
     if !skip_backup {
         println!("Creating encrypted backup before key rotation...");
-        return Err(CliError::InvalidArgument(
-            "key rotation requires --skip-backup or an automatic backup implementation".to_string(),
-        ));
+        let items = porkpie_store::load_items(&pool, &vault_id)
+            .await
+            .map_err(CliError::Store)?;
+        let encrypted_items: Vec<porkpie_core::EncryptedItemData> = items
+            .into_iter()
+            .map(|(id, ciphertext)| {
+                porkpie_core::EncryptedItemData::new(
+                    id,
+                    vault_id,
+                    "", // item type unknown at store layer; acceptable for backup
+                    ciphertext,
+                    porkpie_types::Timestamp::now(),
+                    porkpie_types::Timestamp::now(),
+                    0,
+                )
+            })
+            .collect();
+        let vault_data = porkpie_core::EncryptedVaultData {
+            id: vault_id,
+            name: vault.name.clone(),
+            created_at: vault.created_at,
+            salt: vault.salt,
+            master_key_wrapped: vault.master_key_wrapped().to_vec(),
+            sync_revision: vault.sync_revision(),
+            kdf_params: *vault.kdf_params(),
+        };
+        let backup = porkpie_import::export_backup_file(&vault, vault_data, encrypted_items)
+            .map_err(|e| CliError::Io(std::io::Error::other(e)))?;
+        let backup_path =
+            std::path::PathBuf::from(porkpie_import::backup_file_name(backup.timestamp));
+        porkpie_import::write_backup_file(&backup_path, &backup)
+            .map_err(|e| CliError::Io(std::io::Error::other(e)))?;
+        println!("Backup written to: {}", backup_path.display());
     }
 
     if !confirm_action("This will re-encrypt all items. Continue?")? {

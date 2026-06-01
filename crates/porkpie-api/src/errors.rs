@@ -11,6 +11,8 @@ pub type Result<T> = std::result::Result<T, ApiError>;
 pub enum ApiError {
     #[error("authentication failed")]
     Unauthorized,
+    #[error("forbidden")]
+    Forbidden,
     #[error("bad request: {0}")]
     BadRequest(String),
     #[error("vault not found")]
@@ -30,6 +32,7 @@ impl ApiError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Forbidden => StatusCode::FORBIDDEN,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
@@ -41,6 +44,7 @@ impl ApiError {
     fn error_name(&self) -> &'static str {
         match self {
             Self::Unauthorized => "unauthorized",
+            Self::Forbidden => "forbidden",
             Self::BadRequest(_) => "bad_request",
             Self::NotFound => "not_found",
             Self::Conflict(_) => "sync_conflict",
