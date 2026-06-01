@@ -9,8 +9,8 @@ cargo test --workspace -- --nocapture
 cargo build --workspace
 cargo build --workspace --release
 target/debug/porkpie --version
-docker build -f Dockerfile -t porkpie:latest .
-docker compose up --build
+docker build -f infra/docker/server.Dockerfile -t porkpie:latest .
+cd infra/compose && docker compose -f docker-compose.yml up --build
 ```
 
 ## Coverage Areas

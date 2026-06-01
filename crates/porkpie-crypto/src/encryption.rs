@@ -5,13 +5,14 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit, Payload},
     XChaCha20Poly1305, XNonce,
 };
+use zeroize::Zeroizing;
 
 pub fn encrypt_item<T: serde::Serialize>(
     item: &T,
     key: &[u8; 32],
     aad: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
-    let plaintext = serde_json::to_vec(item)?;
+    let plaintext: Zeroizing<Vec<u8>> = Zeroizing::new(serde_json::to_vec(item)?);
 
     let nonce_bytes = generate_nonce();
     let nonce = XNonce::from_slice(&nonce_bytes);
@@ -48,9 +49,11 @@ pub fn decrypt_item<T: serde::de::DeserializeOwned>(
         msg: ciphertext,
         aad,
     };
-    let plaintext = cipher
-        .decrypt(nonce, payload)
-        .map_err(|_| CryptoError::DecryptionFailed)?;
+    let plaintext: Zeroizing<Vec<u8>> = Zeroizing::new(
+        cipher
+            .decrypt(nonce, payload)
+            .map_err(|_| CryptoError::DecryptionFailed)?,
+    );
 
     let item = serde_json::from_slice(&plaintext)?;
 

@@ -12,7 +12,7 @@ These thirteen invariants are fundamental to Porkpie's operation. Violating any 
 - Use XChaCha20Poly1305 for all encryption.
 - Apply zeroize to plaintext memory buffers immediately after encryption.
 - Never log secrets.
-- Export plaintext requires explicit --dangerous-export-plaintext flag.
+- Export plaintext requires explicit `--dangerous` flag alongside `--format plaintext`.
 
 **Good vs Bad:**
 - *Good*: Secrecy<String> wrapping a plaintext credential.

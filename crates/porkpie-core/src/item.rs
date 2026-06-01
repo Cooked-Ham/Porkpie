@@ -56,7 +56,17 @@ impl Item {
     }
 
     /// Zeroize decrypted secret material before an item leaves unlocked memory.
+    #[cfg(test)]
+    pub fn zeroize_secret_material(&mut self) {
+        self.zeroize_secret_material_internal();
+    }
+
+    #[cfg(not(test))]
     pub(crate) fn zeroize_secret_material(&mut self) {
+        self.zeroize_secret_material_internal();
+    }
+
+    fn zeroize_secret_material_internal(&mut self) {
         match &mut self.data {
             ItemType::Login(secret) => {
                 secret.username.zeroize();
@@ -142,6 +152,36 @@ impl Item {
                     value.zeroize();
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use porkpie_types::SecureNoteSecret;
+
+    #[test]
+    fn zeroize_secret_material_clears_item_fields() {
+        let mut item = Item::new(ItemType::SecureNote(SecureNoteSecret {
+            title: "My Secret".to_string(),
+            content: "DO_NOT_LEAK_42".to_string(),
+        }));
+
+        if let ItemType::SecureNote(secret) = &item.data {
+            assert_eq!(secret.title, "My Secret");
+            assert_eq!(secret.content, "DO_NOT_LEAK_42");
+        } else {
+            panic!("expected SecureNote");
+        }
+
+        item.zeroize_secret_material();
+
+        if let ItemType::SecureNote(secret) = &item.data {
+            assert!(secret.title.is_empty());
+            assert!(secret.content.is_empty());
+        } else {
+            panic!("expected SecureNote");
         }
     }
 }

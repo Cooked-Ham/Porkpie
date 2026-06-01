@@ -5,6 +5,7 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit},
     XChaCha20Poly1305, XNonce,
 };
+use zeroize::Zeroizing;
 
 pub fn wrap_vault_key(master_key: &[u8; 32], vault_key: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
     let nonce_bytes = generate_nonce();
@@ -30,9 +31,11 @@ pub fn unwrap_vault_key(master_key: &[u8; 32], wrapped: &[u8]) -> Result<[u8; 32
     let nonce = XNonce::from_slice(nonce_bytes);
 
     let cipher = XChaCha20Poly1305::new(master_key.into());
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|_| CryptoError::WrongPassword)?;
+    let plaintext: Zeroizing<Vec<u8>> = Zeroizing::new(
+        cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|_| CryptoError::WrongPassword)?,
+    );
 
     if plaintext.len() != 32 {
         return Err(CryptoError::InvalidCiphertext);

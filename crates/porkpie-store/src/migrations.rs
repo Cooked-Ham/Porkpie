@@ -14,6 +14,12 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
+/// Client-side migrations.
+///
+/// The `porkpie-store` crate manages the schema for local vaults and sync
+/// state. API-only tables (`api_keys`, `audit_log`) are defined in the
+/// `porkpie-api` crate because they are server-specific and not needed for
+/// local/desktop storage.
 const MIGRATIONS: &[&str] = &[
     r#"
     CREATE TABLE IF NOT EXISTS vaults (

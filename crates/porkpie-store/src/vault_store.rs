@@ -22,8 +22,8 @@ pub async fn store_vault(pool: &SqlitePool, vault: &Vault) -> Result<()> {
     .bind(&vault.name)
     .bind(vault.created_at.to_millis())
     .bind(vault.salt.as_slice())
-    .bind(vault.master_key_wrapped.as_slice())
-    .bind(u64_to_i64(vault.sync_revision))
+    .bind(vault.master_key_wrapped().as_slice())
+    .bind(u64_to_i64(vault.sync_revision()))
     .execute(pool)
     .await
     .map_err(map_sqlx_error)?;

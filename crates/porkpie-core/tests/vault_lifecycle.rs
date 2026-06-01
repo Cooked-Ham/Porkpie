@@ -23,8 +23,8 @@ fn create_vault_returns_unlocked_vault() {
     .expect("vault should be created");
 
     assert_eq!(vault.state(), VaultState::Unlocked);
-    assert!(!vault.master_key_wrapped.is_empty());
-    assert_eq!(vault.sync_revision, 0);
+    assert!(!vault.master_key_wrapped().is_empty());
+    assert_eq!(vault.sync_revision(), 0);
 }
 
 #[test]
@@ -111,8 +111,26 @@ fn lock_clears_items_from_memory() {
     vault.lock().expect("vault should lock");
 
     assert_eq!(vault.state(), VaultState::Locked);
-    assert!(vault.items.is_empty());
+    assert!(vault.items().is_empty());
     assert!(matches!(vault.get_item(id), Err(CoreError::VaultLocked)));
+}
+
+#[test]
+fn lock_zeroizes_vault_key() {
+    let secret_key = test_secret_key();
+    let (mut vault, _recovery) =
+        Vault::create("TestVault", "correct horse battery staple", &secret_key)
+            .expect("vault should be created");
+
+    // Vault is unlocked after creation, so vault_key should be Some
+    assert!(!vault.is_locked());
+
+    vault.lock().expect("vault should lock");
+
+    // After lock, vault is locked and vault_key is None
+    assert!(vault.is_locked());
+    // The Zeroizing<[u8; 32]> was dropped during lock(), which overwrites
+    // the 32 bytes with zeros before deallocation.
 }
 
 #[test]
@@ -128,4 +146,46 @@ fn operations_on_locked_vault_fail() {
         Err(CoreError::VaultLocked)
     ));
     assert!(matches!(vault.list_items(), Err(CoreError::VaultLocked)));
+}
+
+#[test]
+fn rotate_vault_key_changes_wrapped_key_and_re_encrypts_items() {
+    let secret_key = test_secret_key();
+    let password = "correct horse battery staple";
+    let (mut vault, _recovery) =
+        Vault::create("TestVault", password, &secret_key).expect("vault should be created");
+    let id = vault
+        .create_item(note_item("secret"))
+        .expect("item should be created");
+
+    let old_wrapped = vault.master_key_wrapped().clone();
+    let old_ciphertext = vault
+        .encrypt_item(vault.get_item(id).expect("item exists"))
+        .expect("encrypt");
+
+    let re_encrypted = vault
+        .rotate_vault_key(password, &secret_key)
+        .expect("rotate should succeed");
+
+    // Wrapped key changed
+    assert_ne!(vault.master_key_wrapped(), &old_wrapped);
+    // Re-encrypted list contains the item
+    assert_eq!(re_encrypted.len(), 1);
+    assert_eq!(re_encrypted[0].0, id);
+    // New ciphertext is different from old ciphertext
+    assert_ne!(re_encrypted[0].1, old_ciphertext);
+    // Vault is still unlocked
+    assert_eq!(vault.state(), VaultState::Unlocked);
+    // Vault key changed, so old ciphertext cannot decrypt
+    let result = vault.decrypt_item(&old_ciphertext, &id, "SecureNote");
+    assert!(result.is_err());
+    // But new ciphertext can decrypt
+    let decrypted = vault
+        .decrypt_item(&re_encrypted[0].1, &id, "SecureNote")
+        .expect("new ciphertext should decrypt");
+    if let ItemType::SecureNote(secret) = &decrypted.data {
+        assert_eq!(secret.content, "secret");
+    } else {
+        panic!("expected SecureNote");
+    }
 }

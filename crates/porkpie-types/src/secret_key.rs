@@ -6,11 +6,11 @@ use zeroize::Zeroize;
 pub const LOCAL_SECRET_KEY_LEN: usize = 32;
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct LocalSecretKey(#[serde(with = "hex_bytes")] Vec<u8>);
+pub struct LocalSecretKey(#[serde(with = "hex_bytes")] [u8; LOCAL_SECRET_KEY_LEN]);
 
 impl LocalSecretKey {
     pub fn generate() -> Self {
-        let mut bytes = vec![0u8; LOCAL_SECRET_KEY_LEN];
+        let mut bytes = [0u8; LOCAL_SECRET_KEY_LEN];
         rand::rngs::OsRng.fill_bytes(&mut bytes);
         Self(bytes)
     }
@@ -24,7 +24,9 @@ impl LocalSecretKey {
                 bytes.len()
             ));
         }
-        Ok(Self(bytes))
+        let mut array = [0u8; LOCAL_SECRET_KEY_LEN];
+        array.copy_from_slice(&bytes);
+        Ok(Self(array))
     }
 
     pub fn to_hex(&self) -> String {
@@ -32,10 +34,11 @@ impl LocalSecretKey {
     }
 
     pub fn as_bytes(&self) -> &[u8; 32] {
-        self.0
-            .as_slice()
-            .try_into()
-            .expect("LocalSecretKey must be 32 bytes")
+        &self.0
+    }
+
+    pub fn from_bytes(bytes: &[u8; 32]) -> Self {
+        Self(*bytes)
     }
 }
 
@@ -105,7 +108,9 @@ mod hex_bytes {
         serializer.serialize_str(&hex)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<[u8; super::LOCAL_SECRET_KEY_LEN], D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -113,9 +118,20 @@ mod hex_bytes {
         if !hex.len().is_multiple_of(2) {
             return Err(serde::de::Error::custom("odd-length hex string"));
         }
-        (0..hex.len())
+        let bytes: Result<Vec<u8>, D::Error> = (0..hex.len())
             .step_by(2)
             .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).map_err(serde::de::Error::custom))
-            .collect()
+            .collect();
+        let bytes = bytes?;
+        if bytes.len() != super::LOCAL_SECRET_KEY_LEN {
+            return Err(serde::de::Error::custom(format!(
+                "expected {} bytes, got {}",
+                super::LOCAL_SECRET_KEY_LEN,
+                bytes.len()
+            )));
+        }
+        let mut array = [0u8; super::LOCAL_SECRET_KEY_LEN];
+        array.copy_from_slice(&bytes);
+        Ok(array)
     }
 }

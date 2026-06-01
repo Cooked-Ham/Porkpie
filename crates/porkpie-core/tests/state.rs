@@ -14,11 +14,11 @@ fn revision_tracks_item_mutations() {
     )
     .expect("vault should be created");
 
-    assert_eq!(vault.sync_revision, 0);
+    assert_eq!(vault.sync_revision(), 0);
     assert_eq!(vault.state(), VaultState::Unlocked);
 
     vault.lock().expect("vault should lock");
-    assert_eq!(vault.sync_revision, 0);
+    assert_eq!(vault.sync_revision(), 0);
     assert_eq!(vault.state(), VaultState::Locked);
 }
 
@@ -35,8 +35,8 @@ fn encrypted_metadata_constructs_locked_vault() {
         vault.name.clone(),
         vault.created_at,
         vault.salt,
-        vault.master_key_wrapped.clone(),
-        vault.sync_revision,
+        vault.master_key_wrapped().clone(),
+        vault.sync_revision(),
     );
 
     assert_eq!(loaded.state(), VaultState::Locked);

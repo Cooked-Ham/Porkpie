@@ -3425,6 +3425,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sqlx",
+ "subtle",
  "thiserror 1.0.69",
  "tokio",
  "tower",
@@ -3438,8 +3439,10 @@ dependencies = [
  "arboard",
  "clap",
  "dialoguer",
+ "hex",
  "porkpie-agent",
  "porkpie-core",
+ "porkpie-crypto",
  "porkpie-import",
  "porkpie-store",
  "porkpie-sync",
@@ -3447,6 +3450,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "thiserror 1.0.69",
  "tokio",
@@ -3566,6 +3570,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "uuid",
+ "web-sys",
 ]
 
 [[package]]

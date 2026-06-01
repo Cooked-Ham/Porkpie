@@ -18,7 +18,7 @@ The data model delineates how Porkpie vaults represent items internally, strictl
 | id | ItemId (UUID) | Distinct unique string mapping to individual elements |
 | vault_id | VaultId (UUID) | Strict Foreign Key joining elements directly to native vaults |
 | item_type | ItemType | Enum mapping (Login, APIKey, Server, etc.) |
-| encrypted_data | Vec<u8> | Serialized JSON containing all distinct internal models wrapped within XChaCha20Poly1305 boundaries |
+| ciphertext | Vec<u8> | Serialized JSON containing all distinct internal models wrapped within XChaCha20Poly1305 boundaries |
 | created_at | Timestamp | Initial creation sequence |
 | updated_at | Timestamp | Synchronization resolution flag tracking latest edits |
 
@@ -125,9 +125,9 @@ The data model delineates how Porkpie vaults represent items internally, strictl
 ```
 
 ## Relationships & Constraints
-- Maximum lengths apply heavily across item type domains. encrypted_data is explicitly limited to bounds. Max lengths enforce secure buffer padding lengths.
+- Maximum lengths apply heavily across item type domains. ciphertext is explicitly limited to bounds. Max lengths enforce secure buffer padding lengths.
 - All relationships are purely structurally limited. Items inherently isolate vertically; no secondary linking mappings exist between unique Items.
-- Required fields like the encrypted_data and distinct UUID fields are strictly non-nullable under standard SQLite rules constraints.
+- Required fields like the ciphertext and distinct UUID fields are strictly non-nullable under standard SQLite rules constraints.
 
 ## SQLite Schema Outline
 
@@ -143,7 +143,7 @@ CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY NOT NULL,
     vault_id TEXT NOT NULL,
     item_type TEXT NOT NULL,
-    encrypted_data BLOB NOT NULL,
+    ciphertext BLOB NOT NULL,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     FOREIGN KEY(vault_id) REFERENCES vaults(id) ON DELETE CASCADE

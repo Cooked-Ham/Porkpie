@@ -34,7 +34,7 @@ fn create_list_update_delete_items_work() {
     let id = vault
         .create_item(login_item("first-secret"))
         .expect("item should be created");
-    assert_eq!(vault.sync_revision, 1);
+    assert_eq!(vault.sync_revision(), 1);
 
     let created = vault.get_item(id).expect("item should exist");
     assert_eq!(created.id, id);
@@ -50,11 +50,11 @@ fn create_list_update_delete_items_work() {
     assert_eq!(updated.id, id);
     assert_eq!(updated.created_at, created_at);
     assert!(updated.updated_at >= created_at);
-    assert_eq!(vault.sync_revision, 2);
+    assert_eq!(vault.sync_revision(), 2);
 
     vault.delete_item(id).expect("item should delete");
     assert!(matches!(vault.get_item(id), Err(CoreError::ItemNotFound)));
-    assert_eq!(vault.sync_revision, 3);
+    assert_eq!(vault.sync_revision(), 3);
 }
 
 #[test]
@@ -85,5 +85,5 @@ fn update_missing_item_does_not_bump_revision() {
         vault.update_item(ItemId::new(), note_item("replacement")),
         Err(CoreError::ItemNotFound)
     ));
-    assert_eq!(vault.sync_revision, 0);
+    assert_eq!(vault.sync_revision(), 0);
 }

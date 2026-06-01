@@ -188,7 +188,7 @@ async fn raw_sqlite_does_not_contain_fixture_secrets() {
             ciphertext,
             stored.created_at,
             stored.updated_at,
-            vault.sync_revision,
+            vault.sync_revision(),
         );
         store_item(&pool, &encrypted)
             .await

@@ -100,7 +100,7 @@ pub async fn run(
         if let Ok(decrypted) =
             vault.decrypt_item(&item_data.ciphertext, &item_data.id, &item_data.item_type)
         {
-            vault.items.insert(decrypted.id, decrypted);
+            vault.items_mut().insert(decrypted.id, decrypted);
         }
     }
 
@@ -140,7 +140,7 @@ pub async fn run(
 
         match vault.decrypt_item(&server_item.ciphertext, &item_id, &server_item.item_type) {
             Ok(decrypted) => {
-                vault.items.insert(decrypted.id, decrypted);
+                vault.items_mut().insert(decrypted.id, decrypted);
                 merged_count += 1;
             }
             Err(error) => {
@@ -161,7 +161,7 @@ pub async fn run(
 
     // 8. Re-encrypt all vault items and persist with bumped revisions.
     let mut max_revision = server_sync.new_revision;
-    for (id, item) in &vault.items {
+    for (id, item) in vault.items() {
         let ciphertext = vault.encrypt_item(item).map_err(map_core_error)?;
         let local = local_encrypted.get(&id.to_string());
         let existing_revision = local.map(|e| e.sync_revision).unwrap_or(0);

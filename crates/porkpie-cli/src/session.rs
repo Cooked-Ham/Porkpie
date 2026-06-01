@@ -1,6 +1,7 @@
 use crate::errors::{CliError, Result};
 use porkpie_types::{LocalSecretKey, Timestamp, VaultId};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 const SESSION_TIMEOUT_MILLIS: i64 = 30 * 60 * 1000;
@@ -11,8 +12,12 @@ pub struct SessionState {
     pub current_vault_id: Option<VaultId>,
     pub unlocked: bool,
     pub last_activity: Timestamp,
+    /// Deprecated: plaintext secret key storage. Use `secret_key_encrypted` instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret_key_hex: Option<String>,
+    /// Encrypted secret key (hex-encoded nonce+ciphertext). Decrypted with a key derived from the vault_id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_key_encrypted: Option<String>,
 }
 
 impl Default for SessionState {
@@ -22,6 +27,7 @@ impl Default for SessionState {
             unlocked: false,
             last_activity: Timestamp::now(),
             secret_key_hex: None,
+            secret_key_encrypted: None,
         }
     }
 }
@@ -33,15 +39,18 @@ impl SessionState {
             unlocked: true,
             last_activity: Timestamp::now(),
             secret_key_hex: None,
+            secret_key_encrypted: None,
         }
     }
 
     pub fn unlocked_with_key(vault_id: VaultId, secret_key: &LocalSecretKey) -> Self {
+        let encrypted = encrypt_secret_key(secret_key, &vault_id);
         Self {
             current_vault_id: Some(vault_id),
             unlocked: true,
             last_activity: Timestamp::now(),
-            secret_key_hex: Some(secret_key.to_hex()),
+            secret_key_hex: None,
+            secret_key_encrypted: encrypted,
         }
     }
 
@@ -63,6 +72,12 @@ impl SessionState {
     }
 
     pub fn require_secret_key(&self) -> Result<LocalSecretKey> {
+        // Prefer encrypted storage; fall back to deprecated plaintext for backward compatibility.
+        if let Some(encrypted) = &self.secret_key_encrypted {
+            let vault_id = self.current_vault_id.ok_or(CliError::NoUnlockedSession)?;
+            return decrypt_secret_key(encrypted, &vault_id)
+                .map_err(|_| CliError::NoUnlockedSession);
+        }
         let hex = self
             .secret_key_hex
             .as_ref()
@@ -99,4 +114,35 @@ pub fn save(path: &Path, session: &SessionState) -> Result<()> {
     let contents = serde_json::to_string_pretty(session)?;
     std::fs::write(path, contents)?;
     Ok(())
+}
+
+/// Derive a 32-byte session encryption key from the vault ID.
+///
+/// This is obfuscation-level protection: the vault ID is stored in the
+/// session file, so an attacker with the file can derive the same key.
+/// It raises the bar from "read plaintext" to "reverse the key derivation".
+fn derive_session_key(vault_id: &VaultId) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(vault_id.to_string().as_bytes());
+    hasher.update(b"porkpie-session-v1");
+    let hash = hasher.finalize();
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&hash);
+    key
+}
+
+/// Encrypt a secret key using a key derived from the vault ID.
+fn encrypt_secret_key(secret_key: &LocalSecretKey, vault_id: &VaultId) -> Option<String> {
+    let key = derive_session_key(vault_id);
+    let wrapped = porkpie_crypto::wrap_vault_key(&key, secret_key.as_bytes()).ok()?;
+    Some(hex::encode(&wrapped))
+}
+
+/// Decrypt a secret key using a key derived from the vault ID.
+fn decrypt_secret_key(wrapped_hex: &str, vault_id: &VaultId) -> Result<LocalSecretKey> {
+    let key = derive_session_key(vault_id);
+    let wrapped = hex::decode(wrapped_hex).map_err(|_| CliError::NoUnlockedSession)?;
+    let bytes = porkpie_crypto::unwrap_vault_key(&key, &wrapped)
+        .map_err(|_| CliError::NoUnlockedSession)?;
+    Ok(LocalSecretKey::from_bytes(&bytes))
 }

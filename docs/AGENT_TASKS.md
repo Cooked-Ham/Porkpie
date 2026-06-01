@@ -13,4 +13,4 @@ The implementation was split into ten ordered tasks:
 9. Sync protocol and HTTP API.
 10. Import/export and final validation.
 
-Each task has a corresponding specification in `tasks/`. Later tasks depend on the earlier crates being typechecked and tested.
+All tasks are implemented. The workspace passes all automated validation (138 tests, clean Clippy, release build).

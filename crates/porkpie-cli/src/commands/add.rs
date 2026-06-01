@@ -22,7 +22,7 @@ pub async fn run(context: &CommandContext, item_type: &str) -> Result<()> {
         ciphertext,
         stored_item.created_at,
         stored_item.updated_at,
-        vault.sync_revision,
+        vault.sync_revision(),
     );
 
     let pool = context.pool().await?;

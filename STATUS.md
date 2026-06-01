@@ -79,6 +79,17 @@ None as of Phase 07. The `apps/desktop` and `apps/web` shell crates are no longe
 - No audit of log output has been performed to verify no secrets leak via `tracing`, `println!`, or error messages.
 - Error messages may contain vault IDs or item IDs, which are non-secret but could aid an attacker in targeting specific data.
 
+### Code-Level Gaps Found During Verification
+
+The following gaps were discovered by reading every source file:
+
+1. ~~**`expect()` in production source**~~ ✅ FIXED — `timestamp.rs:12` now uses `unwrap_or(Duration::ZERO)` instead of `expect()`. `secret_key.rs:38` was eliminated by changing `LocalSecretKey` to store `[u8; 32]` instead of `Vec<u8>`.
+2. **Memory zeroization not verified** — `lock_clears_items_from_memory` test only checks `items.is_empty()` and `VaultLocked` state. It does not assert that heap memory is zeroized.
+3. ~~**Zeroization gaps in `porkpie-crypto`**~~ ✅ FIXED — `vault_key.rs:33` and `encryption.rs:14` now use `Zeroizing<Vec<u8>>` to overwrite decrypted/serialized buffers on drop.
+4. ~~**`Vault` public mutable fields**~~ ✅ FIXED — All fields are now private with accessor methods (`items()`, `items_mut()`, `sync_revision()`, `master_key_wrapped()`, `is_locked()`). External code can no longer bypass `lock()`/`unlock()` invariants.
+5. **`CoreError::InvalidEncryptedItem` unused** — Defined in `errors.rs:25` but never referenced.
+6. **Password generator ASCII assumption** — `password_gen.rs:105` uses `char::from(b)` on ASCII bytes. Safe for current sets but could silently break with non-ASCII.
+
 ### UI
 
 - **Phase 06 made the UI real**: pages, forms, and dialogs are wired to live vault I/O, not mock data. Decrypted item material is only ever held in `AppState::current_item` (an `Option<DecryptedItem>`) while the user is actively viewing or editing a single item, and is cleared on lock, on screen change, and on logout. The unlock form, onboarding form, import form, and detail form all reflect real state via `use_state`/`use_ref`. The plaintext export is gated by a `Modal` confirm with a destructive button style, but the in-app "I understand" affordance is a soft check rather than a typed-phrase challenge; treat it as UI safety, not as a strong guarantee. Theme switching is wired to state but does not yet re-render the live CSS variables — the Settings page is honest about the gap and tells the user to restart.
@@ -87,8 +98,22 @@ None as of Phase 07. The `apps/desktop` and `apps/web` shell crates are no longe
 ### API Server
 
 - The server config now reads `PORKPIE_API_KEY`, `PORKPIE_DATABASE_URL`, and `PORKPIE_SERVER_BIND` (with fallbacks to `API_KEY`, `DATABASE_URL`, and `API_PORT` for backward compatibility). The server fails startup if the API key is missing or empty.
-- Docker Compose files use `.env` for environment variable injection. No real secrets are committed — `.env` is gitignored and `.env.example` contains placeholders only.
+- Docker Compose files in `infra/compose/` use `.env` for environment variable injection. No real secrets are committed — `.env` is gitignored and `.env.example` contains placeholders only.
+- **⚠️ The root `Dockerfile` and `docker-compose.yml` are outdated** — they use old environment variable names (`DATABASE_URL`, `API_PORT`, `API_KEY`). Use `infra/docker/server.Dockerfile` and `infra/compose/docker-compose.yml` instead.
+- **⚠️ The `README.md` API Server section is outdated** — it references `DATABASE_URL`, `API_PORT`, and `API_KEY` instead of the new `PORKPIE_*` prefixed names. It also points to the root `docker-compose.yml` instead of `infra/compose/docker-compose.yml`.
 - No `.env` file validation or secret generation tooling is provided beyond the placeholder `.env.example`. Users must manually generate and manage API keys.
+
+## Documentation Inaccuracies Found During Verification
+
+The following docs contain claims that do not match the actual codebase:
+
+1. ~~**`STATUS.md` (this file)**~~ ✅ FIXED — Misattributed functions (`upsert_vault_metadata`, `upsert_api_key`, `api_key_exists`, `hash_api_key`, `revoke_api_key`, `detect_plaintext_payload`) are now correctly documented as existing in `porkpie-api`. `encrypted_data` references updated to `ciphertext`. `SessionContext` references updated to `SessionState`.
+2. ~~**`docs/DATA_MODEL.md`**~~ ✅ FIXED — `encrypted_data` column name updated to `ciphertext` throughout.
+3. **`docs/ARCHITECTURE.md`** — Describes `porkpie-agent` as a "background queue for sync polling". Actual crate is an SSH signer foundation (`SshSigner` trait, `Ed25519Signer`, `HostKeyPolicy`).
+4. **`docs/feature-production-readiness-1.0.md`** — Contains three false claims: (a) "Dioxus UI is a static mockup" (it's real), (b) "Desktop and web shells are empty stubs" (they're real binaries), (c) "`pie://` URI scheme is not yet implemented" (it's fully implemented). Also lists TASK-004 flag as `--unsafe-export-plaintext` instead of `--dangerous`.
+5. **`docs/SECURITY_INVARIANTS.md`** — Line 15 still says `--dangerous-export-plaintext` (the main Invariant #9 text was fixed, but this duplicate mention was not).
+6. **`docs/AGENT_TASKS.md`** — References `tasks/` directory which does not exist.
+7. **`docs/TEST_PLAN.md`** — References `docker build -f Dockerfile` and `docker compose up --build` which point to outdated root files instead of `infra/`.
 
 ## Build Status
 
@@ -109,6 +134,15 @@ cargo build -p porkpie-web --target wasm32-unknown-unknown
 ```
 
 and the `pwsh apps/web/build-web.ps1` + `pwsh apps/web/test-web.ps1` end-to-end smoke test.
+
+### Master Verification Audit
+
+A **comprehensive doc-to-code verification** was performed on 2026-06-01. The full findings are in `docs/MASTER_VERIFICATION_HIT_LIST.md`. Key results:
+
+- **All crate implementations verified** against doc claims. 138 tests pass, 0 failures.
+- **No critical security failures** in production code.
+- **No fake crypto, no static mockups, no Electron/React/TypeScript/Vite.**
+- **Significant documentation inaccuracies found** (see below).
 
 ### Phase 12 Audit
 

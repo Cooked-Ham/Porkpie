@@ -33,8 +33,11 @@ async fn store_and_load_vault_works() {
     assert_eq!(loaded.id, vault.id);
     assert_eq!(loaded.created_at, vault.created_at);
     assert_eq!(loaded.salt, vault.salt);
-    assert_eq!(loaded.master_key_wrapped, vault.master_key_wrapped);
-    assert_eq!(loaded.sync_revision, vault.sync_revision);
+    assert_eq!(
+        loaded.master_key_wrapped,
+        vault.master_key_wrapped().clone()
+    );
+    assert_eq!(loaded.sync_revision, vault.sync_revision());
 
     let mut locked_vault = loaded.into_locked_vault();
     locked_vault

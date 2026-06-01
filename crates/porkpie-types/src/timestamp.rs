@@ -9,7 +9,7 @@ impl Timestamp {
         let start = SystemTime::now();
         let since_the_epoch = start
             .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
+            .unwrap_or(std::time::Duration::ZERO);
         Self(since_the_epoch.as_millis() as i64)
     }
 

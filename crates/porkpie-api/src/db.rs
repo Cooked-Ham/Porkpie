@@ -56,15 +56,34 @@ pub async fn upsert_api_key(pool: &SqlitePool, api_key: &str) -> Result<()> {
 }
 
 /// Return true when the API key hash matches an active entry.
+///
+/// Uses constant-time comparison to avoid timing side-channels.
+/// All active hashes are fetched from the database and compared
+/// in Rust with `subtle::ConstantTimeEq`.
 pub async fn api_key_exists(pool: &SqlitePool, api_key: &str) -> Result<bool> {
     let key_hash = hash_api_key(api_key);
-    let count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM api_keys WHERE api_key_hash = ? AND active = 1")
-            .bind(&key_hash)
-            .fetch_one(pool)
-            .await?;
+    let expected_bytes =
+        hex::decode(&key_hash).map_err(|_| ApiError::Internal("invalid hash".to_string()))?;
+    if expected_bytes.len() != 32 {
+        return Err(ApiError::Internal("invalid hash length".to_string()));
+    }
 
-    Ok(count.0 > 0)
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT api_key_hash FROM api_keys WHERE active = 1")
+        .fetch_all(pool)
+        .await?;
+
+    for (stored_hash,) in rows {
+        if let Ok(stored_bytes) = hex::decode(&stored_hash) {
+            if stored_bytes.len() == 32
+                && subtle::ConstantTimeEq::ct_eq(expected_bytes.as_slice(), stored_bytes.as_slice())
+                    .into()
+            {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 /// Deactivate an API key so it can no longer authenticate.

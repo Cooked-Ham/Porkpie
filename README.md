@@ -135,10 +135,17 @@ This is the documented web shell mode: the same UI surface area, the local store
 ## API Server
 
 ```bash
-docker compose up --build
-curl http://localhost:8000/api/v1/health
+# Production (with Caddy reverse proxy + HTTPS)
+cd infra/compose
+docker compose -f docker-compose.yml up --build
+
+# Development (server only, no Caddy)
+cd infra/compose
+docker compose -f docker-compose.dev.yml up --build
+
+curl http://localhost:8080/api/v1/health
 ```
 
-Configure with `DATABASE_URL`, `API_PORT`, and `API_KEY`. Sync routes require `Authorization: Bearer {API_KEY}`.
+Configure with `PORKPIE_DATABASE_URL`, `PORKPIE_SERVER_BIND`, and `PORKPIE_API_KEY`. Sync routes require `Authorization: Bearer {API_KEY}`.
 
-See [docs/](docs/) for architecture, security invariants, sync protocol, data model, test plan, and roadmap.
+See [infra/](infra/) for Dockerfiles, Caddy config, and compose files. See [docs/](docs/) for architecture, security invariants, sync protocol, data model, test plan, and roadmap.

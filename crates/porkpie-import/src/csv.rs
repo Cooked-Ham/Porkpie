@@ -105,7 +105,7 @@ fn create_encrypted_item(vault: &mut Vault, item: Item) -> Result<EncryptedItemD
         ciphertext,
         stored_item.created_at,
         stored_item.updated_at,
-        vault.sync_revision,
+        vault.sync_revision(),
     ))
 }
 

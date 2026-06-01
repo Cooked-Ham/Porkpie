@@ -12,7 +12,7 @@ tags: [feature, architecture, product-readiness]
 
 ![Status: Planned](https://img.shields.io/badge/status-Planned-blue)
 
-This plan outlines the steps required to take the Porkpie password manager from its current foundational prototype state to a fully "sell-worthy" production product. The current codebase has implemented core backend requirements including local SQLite vaults, CLI, HTTP Sync API, and zero-knowledge cryptography. The Dioxus UI is a static mockup without real interactivity. Desktop and web app shells are empty stubs. The `pie://` URI scheme is not yet implemented. Before commercial viability, the project requires honest completion of all foundation gates, deeper OS integration, browser extensions, expanded importers, and recovery features.
+This plan outlines the steps required to take the Porkpie password manager from its current foundational prototype state to a fully "sell-worthy" production product. The current codebase has implemented core backend requirements including local SQLite vaults, CLI, HTTP Sync API, and zero-knowledge cryptography. The Dioxus UI is fully wired to real vault operations (onboarding, unlock, CRUD, import/export). Desktop and web app shells are real runnable binaries. The `pie://` URI scheme is fully implemented with parsing, validation, and 9 tests. Before commercial viability, the project requires honest completion of all foundation gates, deeper OS integration, browser extensions, expanded importers, and recovery features.
 
 ## 1. Requirements & Constraints
 
@@ -37,7 +37,7 @@ This plan outlines the steps required to take the Porkpie password manager from 
 | TASK-001 | Implement 1Password native JSON importer in `porkpie-import` | |  |
 | TASK-002 | Implement Bitwarden native JSON/CSV importer in `porkpie-import` | |  |
 | TASK-003 | Implement LastPass CSV importer in `porkpie-import` | |  |
-| TASK-004 | Add plaintext export support to `porkpie-cli` behind an `--unsafe-export-plaintext` flag | |  |
+| TASK-004 | Add plaintext export support to `porkpie-cli` behind a `--dangerous` flag | ✅ | 2026-06-01 |
 
 ### Implementation Phase 2: OS Integration & Browser Support
 

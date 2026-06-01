@@ -123,6 +123,8 @@ pub struct EncryptedImportSummary {
 pub enum VaultBackend {
     #[cfg(not(target_arch = "wasm32"))]
     Sqlite(std::sync::Arc<tokio::sync::Mutex<SqliteState>>),
+    #[cfg(target_arch = "wasm32")]
+    LocalStorage(std::sync::Arc<std::sync::Mutex<LocalStorageState>>),
     Unavailable,
 }
 
@@ -131,6 +133,8 @@ impl std::fmt::Debug for VaultBackend {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
             Self::Sqlite(_) => f.write_str("Sqlite(<state>)"),
+            #[cfg(target_arch = "wasm32")]
+            Self::LocalStorage(_) => f.write_str("LocalStorage(<state>)"),
             Self::Unavailable => f.write_str("Unavailable"),
         }
     }
@@ -185,16 +189,20 @@ impl VaultBackend {
         }
     }
 
-    /// WASM stub. The web shell does not have a backend, so vault
-    /// creation always returns [`VaultStoreError::Unavailable`].
+    /// WASM implementation. The web shell uses localStorage when available.
     #[cfg(target_arch = "wasm32")]
     pub async fn create_vault(
         &self,
-        _name: &str,
-        _password: &str,
-        _secret_key: &LocalSecretKey,
+        name: &str,
+        password: &str,
+        secret_key: &LocalSecretKey,
     ) -> Result<(VaultSummary, RecoveryKit)> {
-        Err(VaultStoreError::Unavailable)
+        match self {
+            Self::LocalStorage(state) => {
+                UnlockedVaultHandle::create(state.clone(), name, password, secret_key).await
+            }
+            Self::Unavailable => Err(VaultStoreError::Unavailable),
+        }
     }
 
     /// Unlock an existing vault, load and decrypt all items, and return a
@@ -214,16 +222,20 @@ impl VaultBackend {
         }
     }
 
-    /// WASM stub. The web shell does not have access to a SQLite
-    /// backend, so unlocking always returns [`VaultStoreError::Unavailable`].
+    /// WASM implementation. The web shell uses localStorage when available.
     #[cfg(target_arch = "wasm32")]
     pub async fn unlock_vault(
         &self,
-        _name: &str,
-        _password: &str,
-        _secret_key: &LocalSecretKey,
-    ) -> Result<()> {
-        Err(VaultStoreError::Unavailable)
+        name: &str,
+        password: &str,
+        secret_key: &LocalSecretKey,
+    ) -> Result<UnlockedVaultHandle> {
+        match self {
+            Self::LocalStorage(state) => {
+                UnlockedVaultHandle::open(state.clone(), name, password, secret_key).await
+            }
+            Self::Unavailable => Err(VaultStoreError::Unavailable),
+        }
     }
 
     /// Load the list of vault summaries. Used by the unlock page to show
@@ -255,6 +267,19 @@ impl VaultBackend {
                     })
                     .collect()
             }
+            #[cfg(target_arch = "wasm32")]
+            Self::LocalStorage(state) => {
+                let guard = state.lock().unwrap();
+                let vaults = guard.load_vaults()?;
+                Ok(vaults
+                    .into_iter()
+                    .map(|v| VaultSummary {
+                        id: v.id,
+                        name: v.name,
+                        created_at: v.created_at,
+                    })
+                    .collect())
+            }
             Self::Unavailable => Err(VaultStoreError::Unavailable),
         }
     }
@@ -275,6 +300,20 @@ impl VaultBackend {
             let _ = database_url;
             Err(VaultStoreError::Unavailable)
         }
+    }
+
+    /// Connect to the browser's localStorage and return the backend.
+    /// Only available on the `wasm32` target.
+    #[cfg(target_arch = "wasm32")]
+    pub async fn connect_local_storage() -> Result<Self> {
+        let window = web_sys::window().ok_or(VaultStoreError::Unavailable)?;
+        let storage = window
+            .local_storage()
+            .map_err(|_| VaultStoreError::Unavailable)?
+            .ok_or(VaultStoreError::Unavailable)?;
+        Ok(Self::LocalStorage(std::sync::Arc::new(
+            std::sync::Mutex::new(LocalStorageState { storage }),
+        )))
     }
 }
 
@@ -348,7 +387,7 @@ mod sqlite_impl {
                 let item = vault
                     .decrypt_item(&ciphertext, &item_id, &item_type)
                     .map_err(VaultStoreError::from)?;
-                vault.items.insert(item.id, item);
+                vault.items_mut().insert(item.id, item);
             }
             Ok(Self {
                 summary,
@@ -359,7 +398,7 @@ mod sqlite_impl {
 
         pub async fn list_items(&self) -> Result<Vec<ItemSummary>> {
             let vault = self.vault.lock().await;
-            let mut out: Vec<ItemSummary> = vault.items.values().map(ItemSummary::from).collect();
+            let mut out: Vec<ItemSummary> = vault.items().values().map(ItemSummary::from).collect();
             out.sort_by(|a, b| {
                 a.title
                     .cmp(&b.title)
@@ -371,7 +410,7 @@ mod sqlite_impl {
         pub async fn get_item(&self, id: ItemId) -> Result<DecryptedItem> {
             let vault = self.vault.lock().await;
             vault
-                .items
+                .items()
                 .get(&id)
                 .map(DecryptedItem::from)
                 .ok_or(VaultStoreError::ItemNotFound)
@@ -382,7 +421,7 @@ mod sqlite_impl {
             let mut vault = self.vault.lock().await;
             let id = vault.create_item(item).map_err(VaultStoreError::from)?;
             let stored = vault
-                .items
+                .items()
                 .get(&id)
                 .cloned()
                 .ok_or(VaultStoreError::ItemNotFound)?;
@@ -395,7 +434,7 @@ mod sqlite_impl {
                 ciphertext,
                 stored.created_at,
                 stored.updated_at,
-                vault.sync_revision,
+                vault.sync_revision(),
             );
             let pool = {
                 let guard = self.state.lock().await;
@@ -410,7 +449,7 @@ mod sqlite_impl {
         pub async fn update_item(&self, id: ItemId, data: ItemType) -> Result<DecryptedItem> {
             let mut vault = self.vault.lock().await;
             let created_at = vault
-                .items
+                .items()
                 .get(&id)
                 .map(|existing| existing.created_at)
                 .ok_or(VaultStoreError::ItemNotFound)?;
@@ -433,7 +472,7 @@ mod sqlite_impl {
                 ciphertext,
                 item.created_at,
                 item.updated_at,
-                vault.sync_revision,
+                vault.sync_revision(),
             );
             let pool = {
                 let guard = self.state.lock().await;
@@ -478,7 +517,7 @@ mod sqlite_impl {
                 .await
                 .map_err(|error| VaultStoreError::Database(error.to_string()))?;
             let mut items: Vec<EncryptedItemData> = Vec::new();
-            for item in vault.items.values() {
+            for item in vault.items().values() {
                 let ciphertext = vault.encrypt_item(item).map_err(VaultStoreError::from)?;
                 let item_type = item_type_label(&item.data).to_string();
                 items.push(EncryptedItemData::new(
@@ -488,7 +527,7 @@ mod sqlite_impl {
                     ciphertext,
                     item.created_at,
                     item.updated_at,
-                    vault.sync_revision,
+                    vault.sync_revision(),
                 ));
             }
             let payload = porkpie_import::export_backup_file(&vault, encrypted_vault, items)
@@ -508,7 +547,7 @@ mod sqlite_impl {
             }
             let vault = self.vault.lock().await;
             let items = vault
-                .items
+                .items()
                 .values()
                 .map(|item| (item_title(&item.data).to_string(), item.data.clone()))
                 .collect();
@@ -552,7 +591,7 @@ mod sqlite_impl {
                 let decrypted = vault
                     .decrypt_item(&item.ciphertext, &item.id, &item.item_type)
                     .map_err(VaultStoreError::from)?;
-                vault.items.insert(decrypted.id, decrypted);
+                vault.items_mut().insert(decrypted.id, decrypted);
             }
             Ok(EncryptedImportSummary {
                 imported: result.imported,
@@ -564,6 +603,9 @@ mod sqlite_impl {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use sqlite_impl::{SqliteState, UnlockedVaultHandle};
+
+#[cfg(target_arch = "wasm32")]
+pub use local_storage_impl::{LocalStorageState, UnlockedVaultHandle};
 
 impl From<porkpie_core::CoreError> for VaultStoreError {
     fn from(error: porkpie_core::CoreError) -> Self {
@@ -584,6 +626,346 @@ impl From<&Item> for ItemSummary {
             title: item_title(&item.data),
             created_at: item.created_at,
             updated_at: item.updated_at,
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+mod local_storage_impl {
+    use super::{
+        item_title, item_type_label, DecryptedItem, EncryptedBackupExport, EncryptedImportSummary,
+        Item, ItemId, ItemSummary, ItemType, LocalSecretKey, Result, Timestamp, Vault,
+        VaultStoreError, VaultSummary,
+    };
+    use porkpie_store::{EncryptedItemData, EncryptedVaultData};
+    use std::collections::HashSet;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use web_sys::Storage;
+
+    const VAULTS_KEY: &str = "porkpie_vaults";
+    fn items_key(vault_id: &str) -> String {
+        format!("porkpie_items:{}", vault_id)
+    }
+
+    #[derive(Debug)]
+    pub struct LocalStorageState {
+        pub storage: Storage,
+    }
+
+    impl LocalStorageState {
+        fn load_vaults(&self) -> Result<Vec<EncryptedVaultData>> {
+            let json = self
+                .storage
+                .get_item(VAULTS_KEY)
+                .map_err(|_| VaultStoreError::Database("localStorage read failed".to_string()))?
+                .unwrap_or_else(|| "[]".to_string());
+            serde_json::from_str(&json).map_err(|e| VaultStoreError::Json(e.to_string()))
+        }
+
+        fn save_vaults(&self, vaults: &[EncryptedVaultData]) -> Result<()> {
+            let json =
+                serde_json::to_string(vaults).map_err(|e| VaultStoreError::Json(e.to_string()))?;
+            self.storage
+                .set_item(VAULTS_KEY, &json)
+                .map_err(|_| VaultStoreError::Database("localStorage write failed".to_string()))
+        }
+
+        fn load_items(&self, vault_id: &str) -> Result<Vec<EncryptedItemData>> {
+            let json = self
+                .storage
+                .get_item(&items_key(vault_id))
+                .map_err(|_| VaultStoreError::Database("localStorage read failed".to_string()))?
+                .unwrap_or_else(|| "[]".to_string());
+            serde_json::from_str(&json).map_err(|e| VaultStoreError::Json(e.to_string()))
+        }
+
+        fn save_items(&self, vault_id: &str, items: &[EncryptedItemData]) -> Result<()> {
+            let json =
+                serde_json::to_string(items).map_err(|e| VaultStoreError::Json(e.to_string()))?;
+            self.storage
+                .set_item(&items_key(vault_id), &json)
+                .map_err(|_| VaultStoreError::Database("localStorage write failed".to_string()))
+        }
+    }
+
+    /// An unlocked vault backed by localStorage.
+    #[derive(Clone)]
+    pub struct UnlockedVaultHandle {
+        pub summary: VaultSummary,
+        state: Arc<Mutex<LocalStorageState>>,
+        vault: Arc<Mutex<Vault>>,
+    }
+
+    impl std::fmt::Debug for UnlockedVaultHandle {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("UnlockedVaultHandle")
+                .field("summary", &self.summary)
+                .field("vault", &"<unlocked>")
+                .finish()
+        }
+    }
+
+    impl UnlockedVaultHandle {
+        pub async fn create(
+            state: Arc<Mutex<LocalStorageState>>,
+            name: &str,
+            password: &str,
+            secret_key: &LocalSecretKey,
+        ) -> Result<(VaultSummary, porkpie_types::RecoveryKit)> {
+            if name.trim().is_empty() {
+                return Err(VaultStoreError::InvalidItem(
+                    "vault name is empty".to_string(),
+                ));
+            }
+            let (vault, recovery_kit) =
+                Vault::create(name, password, secret_key).map_err(VaultStoreError::from)?;
+            let guard = state.lock().unwrap();
+            let mut vaults = guard.load_vaults()?;
+            if vaults.iter().any(|v| v.name == name) {
+                return Err(VaultStoreError::VaultAlreadyExists(name.to_string()));
+            }
+            vaults.push(EncryptedVaultData {
+                id: vault.id,
+                name: vault.name.clone(),
+                created_at: vault.created_at,
+                salt: vault.salt,
+                master_key_wrapped: vault.master_key_wrapped().clone(),
+                sync_revision: vault.sync_revision(),
+            });
+            guard.save_vaults(&vaults)?;
+            guard.save_items(&vault.id.to_string(), &[])?;
+            Ok((
+                VaultSummary {
+                    id: vault.id,
+                    name: vault.name.clone(),
+                    created_at: vault.created_at,
+                },
+                recovery_kit,
+            ))
+        }
+
+        pub async fn open(
+            state: Arc<Mutex<LocalStorageState>>,
+            name: &str,
+            password: &str,
+            secret_key: &LocalSecretKey,
+        ) -> Result<Self> {
+            let guard = state.lock().unwrap();
+            let vaults = guard.load_vaults()?;
+            let stored = vaults
+                .into_iter()
+                .find(|v| v.name == name)
+                .ok_or_else(|| VaultStoreError::VaultNotFound(name.to_string()))?;
+            let summary = VaultSummary {
+                id: stored.id,
+                name: stored.name.clone(),
+                created_at: stored.created_at,
+            };
+            let mut vault = stored.into_locked_vault();
+            vault
+                .unlock(password, secret_key)
+                .map_err(VaultStoreError::from)?;
+            let items = guard.load_items(&summary.id.to_string())?;
+            for item in items {
+                let decrypted = vault
+                    .decrypt_item(&item.ciphertext, &item.id, &item.item_type)
+                    .map_err(VaultStoreError::from)?;
+                vault.items_mut().insert(decrypted.id, decrypted);
+            }
+            Ok(Self {
+                summary,
+                state,
+                vault: Arc::new(Mutex::new(vault)),
+            })
+        }
+
+        pub async fn list_items(&self) -> Result<Vec<ItemSummary>> {
+            let vault = self.vault.lock().unwrap();
+            let mut out: Vec<ItemSummary> = vault.items().values().map(ItemSummary::from).collect();
+            out.sort_by(|a, b| {
+                a.title
+                    .cmp(&b.title)
+                    .then(a.id.to_string().cmp(&b.id.to_string()))
+            });
+            Ok(out)
+        }
+
+        pub async fn get_item(&self, id: ItemId) -> Result<DecryptedItem> {
+            let vault = self.vault.lock().unwrap();
+            vault
+                .items()
+                .get(&id)
+                .map(DecryptedItem::from)
+                .ok_or(VaultStoreError::ItemNotFound)
+        }
+
+        pub async fn create_item(&self, data: ItemType) -> Result<DecryptedItem> {
+            let item = Item::new(data);
+            let mut vault = self.vault.lock().unwrap();
+            let id = vault.create_item(item).map_err(VaultStoreError::from)?;
+            let stored = vault
+                .items()
+                .get(&id)
+                .cloned()
+                .ok_or(VaultStoreError::ItemNotFound)?;
+            let ciphertext = vault.encrypt_item(&stored).map_err(VaultStoreError::from)?;
+            let item_type = item_type_label(&stored.data).to_string();
+            let record = EncryptedItemData::new(
+                stored.id,
+                self.summary.id,
+                item_type,
+                ciphertext,
+                stored.created_at,
+                stored.updated_at,
+                vault.sync_revision(),
+            );
+            let guard = self.state.lock().unwrap();
+            let mut items = guard.load_items(&self.summary.id.to_string())?;
+            items.push(record);
+            guard.save_items(&self.summary.id.to_string(), &items)?;
+            Ok(DecryptedItem::from(&stored))
+        }
+
+        pub async fn update_item(&self, id: ItemId, data: ItemType) -> Result<DecryptedItem> {
+            let mut vault = self.vault.lock().unwrap();
+            let created_at = vault
+                .items()
+                .get(&id)
+                .map(|existing| existing.created_at)
+                .ok_or(VaultStoreError::ItemNotFound)?;
+            let updated_at = Timestamp::now();
+            let item = Item {
+                id,
+                data,
+                created_at,
+                updated_at,
+            };
+            vault
+                .update_item(id, item.clone())
+                .map_err(VaultStoreError::from)?;
+            let ciphertext = vault.encrypt_item(&item).map_err(VaultStoreError::from)?;
+            let item_type = item_type_label(&item.data).to_string();
+            let record = EncryptedItemData::new(
+                item.id,
+                self.summary.id,
+                item_type,
+                ciphertext,
+                item.created_at,
+                item.updated_at,
+                vault.sync_revision(),
+            );
+            let guard = self.state.lock().unwrap();
+            let mut items = guard.load_items(&self.summary.id.to_string())?;
+            if let Some(existing) = items.iter_mut().find(|i| i.id == id) {
+                *existing = record;
+            } else {
+                return Err(VaultStoreError::ItemNotFound);
+            }
+            guard.save_items(&self.summary.id.to_string(), &items)?;
+            Ok(DecryptedItem::from(&item))
+        }
+
+        pub async fn delete_item(&self, id: ItemId) -> Result<()> {
+            {
+                let mut vault = self.vault.lock().unwrap();
+                vault.delete_item(id).map_err(VaultStoreError::from)?;
+            }
+            let guard = self.state.lock().unwrap();
+            let mut items = guard.load_items(&self.summary.id.to_string())?;
+            items.retain(|i| i.id != id);
+            guard.save_items(&self.summary.id.to_string(), &items)?;
+            Ok(())
+        }
+
+        pub async fn lock(self) -> Result<()> {
+            let mut vault = self.vault.lock().unwrap();
+            let _ = vault.lock();
+            Ok(())
+        }
+
+        pub async fn export_encrypted(&self) -> Result<EncryptedBackupExport> {
+            let vault = self.vault.lock().unwrap();
+            let guard = self.state.lock().unwrap();
+            let encrypted_vault = guard
+                .load_vaults()?
+                .into_iter()
+                .find(|v| v.id == self.summary.id)
+                .ok_or(VaultStoreError::VaultNotFound(self.summary.name.clone()))?;
+            let mut items: Vec<EncryptedItemData> = Vec::new();
+            for item in vault.items().values() {
+                let ciphertext = vault.encrypt_item(item).map_err(VaultStoreError::from)?;
+                let item_type = item_type_label(&item.data).to_string();
+                items.push(EncryptedItemData::new(
+                    item.id,
+                    self.summary.id,
+                    item_type,
+                    ciphertext,
+                    item.created_at,
+                    item.updated_at,
+                    vault.sync_revision(),
+                ));
+            }
+            let payload = porkpie_import::export_backup_file(&vault, encrypted_vault, items)
+                .map_err(|error| VaultStoreError::Export(error.to_string()))?;
+            Ok(EncryptedBackupExport {
+                json: serde_json::to_string_pretty(&payload)
+                    .map_err(|error| VaultStoreError::Json(error.to_string()))?,
+                suggested_filename: porkpie_import::backup_file_name(Timestamp::now().to_millis()),
+            })
+        }
+
+        pub async fn export_plaintext(&self, confirm: bool) -> Result<super::PlaintextExport> {
+            if !confirm {
+                return Err(VaultStoreError::Export(
+                    "plaintext export requires explicit confirmation".to_string(),
+                ));
+            }
+            let vault = self.vault.lock().unwrap();
+            let items = vault
+                .items()
+                .values()
+                .map(|item| (item_title(&item.data).to_string(), item.data.clone()))
+                .collect();
+            Ok(super::PlaintextExport {
+                vault_name: self.summary.name.clone(),
+                exported_at: Timestamp::now(),
+                items,
+            })
+        }
+
+        pub async fn import_encrypted_with_keys(
+            &self,
+            password: &str,
+            secret_key: &LocalSecretKey,
+            json: &str,
+            mode: porkpie_import::BackupImportMode,
+        ) -> Result<EncryptedImportSummary> {
+            let backup: porkpie_import::BackupFile = serde_json::from_str(json)
+                .map_err(|error| VaultStoreError::Json(error.to_string()))?;
+            let guard = self.state.lock().unwrap();
+            let existing: HashSet<String> = guard
+                .load_items(&self.summary.id.to_string())?
+                .into_iter()
+                .map(|item| item.id.to_string())
+                .collect();
+            let result =
+                porkpie_import::import_backup(backup, password, secret_key, &existing, mode)
+                    .map_err(|error| VaultStoreError::Import(error.to_string()))?;
+            let mut vault = self.vault.lock().unwrap();
+            let mut items = guard.load_items(&self.summary.id.to_string())?;
+            for item in &result.items {
+                items.push(item.clone());
+                let decrypted = vault
+                    .decrypt_item(&item.ciphertext, &item.id, &item.item_type)
+                    .map_err(VaultStoreError::from)?;
+                vault.items_mut().insert(decrypted.id, decrypted);
+            }
+            guard.save_items(&self.summary.id.to_string(), &items)?;
+            Ok(EncryptedImportSummary {
+                imported: result.imported,
+                skipped: result.skipped,
+            })
         }
     }
 }

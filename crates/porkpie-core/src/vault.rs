@@ -19,10 +19,10 @@ pub struct Vault {
     pub name: String,
     pub created_at: Timestamp,
     pub salt: [u8; 32],
-    pub master_key_wrapped: Vec<u8>,
-    pub items: HashMap<ItemId, Item>,
-    pub is_locked: bool,
-    pub sync_revision: u64,
+    master_key_wrapped: Vec<u8>,
+    items: HashMap<ItemId, Item>,
+    is_locked: bool,
+    sync_revision: u64,
     vault_key: Option<Zeroizing<[u8; 32]>>,
 }
 
@@ -224,6 +224,64 @@ impl Vault {
 
     fn bump_revision(&mut self) {
         self.sync_revision = self.sync_revision.saturating_add(1);
+    }
+
+    pub fn master_key_wrapped(&self) -> &Vec<u8> {
+        &self.master_key_wrapped
+    }
+
+    pub fn sync_revision(&self) -> u64 {
+        self.sync_revision
+    }
+
+    pub fn items(&self) -> &HashMap<ItemId, Item> {
+        &self.items
+    }
+
+    pub fn items_mut(&mut self) -> &mut HashMap<ItemId, Item> {
+        &mut self.items
+    }
+
+    pub fn is_locked(&self) -> bool {
+        self.is_locked
+    }
+
+    /// Rotate the vault key: generate a new vault key, re-encrypt all items,
+    /// and re-wrap the new vault key with the master key derived from the
+    /// password and secret key.
+    ///
+    /// Returns the re-encrypted item ciphertexts so the caller can persist them.
+    /// The vault must be unlocked before calling this method.
+    pub fn rotate_vault_key(
+        &mut self,
+        password: &str,
+        secret_key: &LocalSecretKey,
+    ) -> Result<Vec<(ItemId, Vec<u8>)>> {
+        self.ensure_unlocked()?;
+
+        let password = Secret::new(password.to_owned());
+        let master_key = Zeroizing::new(derive_key(
+            &password,
+            secret_key.as_bytes(),
+            &self.salt,
+            &Argon2Params::default(),
+        )?);
+        let new_vault_key = Zeroizing::new(random_bytes());
+        let new_master_key_wrapped = wrap_vault_key(&master_key, &new_vault_key)?;
+
+        // Replace the old vault key (it will be zeroized on drop)
+        self.vault_key = Some(Zeroizing::new(*new_vault_key));
+        self.master_key_wrapped = new_master_key_wrapped;
+        self.bump_revision();
+
+        // Re-encrypt all items with the new vault key
+        let mut re_encrypted = Vec::new();
+        for item in self.items.values() {
+            let ciphertext = self.encrypt_item(item)?;
+            re_encrypted.push((item.id, ciphertext));
+        }
+
+        Ok(re_encrypted)
     }
 }
 

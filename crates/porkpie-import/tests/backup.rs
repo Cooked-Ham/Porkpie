@@ -121,15 +121,15 @@ fn encrypted_login(
         vault.encrypt_item(&item).expect("encrypt item"),
         item.created_at,
         item.updated_at,
-        vault.sync_revision,
+        vault.sync_revision(),
     );
     let vault_data = EncryptedVaultData {
         id: vault.id,
         name: vault.name.clone(),
         created_at: vault.created_at,
         salt: vault.salt,
-        master_key_wrapped: vault.master_key_wrapped.clone(),
-        sync_revision: vault.sync_revision,
+        master_key_wrapped: vault.master_key_wrapped().clone(),
+        sync_revision: vault.sync_revision(),
     };
 
     (vault, vault_data, encrypted)
