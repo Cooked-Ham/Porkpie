@@ -210,8 +210,6 @@ pub enum SshAgentCommands {
     Env,
     /// Check whether the agent is running.
     Status,
-    /// Stop the agent (remove socket / pipe).
-    Stop,
 }
 
 /// Backup subcommands.
@@ -341,7 +339,6 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::SshAgent(SshAgentCommands::Status) => {
             commands::ssh::run_agent_status(&context).await
         }
-        Commands::SshAgent(SshAgentCommands::Stop) => commands::ssh::run_agent_stop(&context).await,
         Commands::Keychain(KeychainCommands::Status) => {
             commands::keychain::run_status(&context).await
         }

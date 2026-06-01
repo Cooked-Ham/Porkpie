@@ -51,8 +51,9 @@ pub async fn run_windows_named_pipe(
 ) -> Result<(), AgentError> {
     use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 
-    // Check for the built-in Windows ssh-agent service
-    if is_windows_ssh_agent_service_running()? {
+    // Only check for the built-in Windows ssh-agent service when binding
+    // the default OpenSSH pipe. Custom pipes (e.g. test pipes) do not conflict.
+    if pipe_name == DEFAULT_PIPE_NAME && is_windows_ssh_agent_service_running()? {
         return Err(AgentError::Io(std::io::Error::other(
             "The Windows OpenSSH Authentication Agent service is running.\n\
              It owns the default agent pipe.  Disable it first:\n\

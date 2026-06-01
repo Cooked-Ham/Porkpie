@@ -60,9 +60,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Check Windows build
+      - name: Check Windows build (agent)
         run: cargo check --target x86_64-pc-windows-msvc -p porkpie-agent
-      - name: Check Windows tests
+      - name: Check Windows build (cli)
+        run: cargo check --target x86_64-pc-windows-msvc -p porkpie-cli
+      - name: Run Windows tests (agent)
         run: cargo test --target x86_64-pc-windows-msvc -p porkpie-agent
+      - name: Run Windows tests (cli)
+        run: cargo test --target x86_64-pc-windows-msvc -p porkpie-cli
       - name: Run clippy (Windows-compatible crates)
         run: cargo clippy --workspace --exclude porkpie-web --exclude porkpie-desktop --all-targets -- -D warnings

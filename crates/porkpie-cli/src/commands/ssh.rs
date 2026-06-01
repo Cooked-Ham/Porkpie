@@ -60,6 +60,7 @@ pub async fn run_agent_start(context: &CommandContext) -> Result<()> {
     let items = vault.list_items().map_err(crate::errors::map_core_error)?;
 
     let mut ssh_keys_found = false;
+    let mut loaded_identities = 0usize;
     let mut agent = porkpie_agent::Agent::new();
 
     for item in items {
@@ -130,6 +131,7 @@ pub async fn run_agent_start(context: &CommandContext) -> Result<()> {
                 allowed_hosts: secret.allowed_hosts.clone(),
                 require_confirmation: secret.require_confirmation,
             });
+            loaded_identities += 1;
         }
     }
 
@@ -139,6 +141,13 @@ pub async fn run_agent_start(context: &CommandContext) -> Result<()> {
             "Add an SSH key item with `porkpie add SSHKey` and then run `porkpie ssh-agent start`."
         );
         return Ok(());
+    }
+
+    if loaded_identities == 0 {
+        return Err(CliError::InvalidArgument(
+            "All SSH key items in the vault failed to load. Check warnings above and fix the keys."
+                .to_string(),
+        ));
     }
 
     // Set up approval callback for confirmation-required keys
@@ -257,19 +266,18 @@ pub async fn run_agent_status(_context: &CommandContext) -> Result<()> {
 
     #[cfg(windows)]
     {
-        use std::fs::metadata;
         let pipe_name = porkpie_agent::windows_pipe::DEFAULT_PIPE_NAME;
-        // Named pipes don't have a filesystem presence we can stat, but we can
-        // try to open the client side.  If it succeeds, someone is listening.
-        let listening = tokio::runtime::Runtime::new().unwrap().block_on(async {
+        // Probe: attempt to connect to the pipe as a client.
+        // If a server is listening, the open succeeds; otherwise it fails.
+        let listening = {
             use tokio::net::windows::named_pipe::ClientOptions;
             ClientOptions::new().open(pipe_name).is_ok()
-        });
+        };
         if listening {
-            println!("Agent pipe is active: {pipe_name}");
+            println!("Agent pipe is active (connect probe succeeded): {pipe_name}");
             println!("Try: ssh-add -L");
         } else {
-            println!("Agent pipe not found: {pipe_name}");
+            println!("Agent pipe not found (connect probe failed): {pipe_name}");
             println!("Run: porkpie ssh-agent start");
         }
 
@@ -287,40 +295,6 @@ pub async fn run_agent_status(_context: &CommandContext) -> Result<()> {
                 println!("Could not check Windows ssh-agent service status: {e}");
             }
         }
-    }
-
-    #[cfg(not(any(unix, windows)))]
-    {
-        println!("SSH agent is not supported on this platform.");
-    }
-
-    Ok(())
-}
-
-/// Stop the agent (remove socket / pipe).
-pub async fn run_agent_stop(_context: &CommandContext) -> Result<()> {
-    #[cfg(unix)]
-    {
-        let socket_path = if let Ok(path) = std::env::var("PORKPIE_SSH_AGENT_SOCK") {
-            std::path::PathBuf::from(path)
-        } else {
-            std::env::temp_dir().join("porkpie-ssh-agent.sock")
-        };
-        if socket_path.exists() {
-            std::fs::remove_file(&socket_path)
-                .map_err(|e| CliError::InvalidArgument(format!("cannot remove socket: {e}")))?;
-            println!("Removed agent socket: {}", socket_path.display());
-        } else {
-            println!("Agent socket not found: {}", socket_path.display());
-        }
-    }
-
-    #[cfg(windows)]
-    {
-        println!("On Windows, the agent runs in foreground mode.");
-        println!("Stop it by pressing Ctrl+C in the terminal where it is running.");
-        println!("To prevent the built-in service from restarting, run:");
-        println!("  Set-Service ssh-agent -StartupType Disabled");
     }
 
     #[cfg(not(any(unix, windows)))]
