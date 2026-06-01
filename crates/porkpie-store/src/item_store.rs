@@ -27,27 +27,35 @@ pub async fn store_item(pool: &SqlitePool, item: &EncryptedItemData) -> Result<(
     Ok(())
 }
 
-/// Load encrypted item ciphertext by item identifier.
-pub async fn load_item(pool: &SqlitePool, item_id: &ItemId) -> Result<Vec<u8>> {
-    let row = sqlx::query_as::<_, (Vec<u8>,)>("SELECT ciphertext FROM items WHERE id = ?")
-        .bind(item_id.to_string())
-        .fetch_optional(pool)
-        .await
-        .map_err(map_sqlx_error)?
-        .ok_or(StoreError::ItemNotFound(*item_id))?;
+/// Load encrypted item ciphertext by vault and item identifier.
+pub async fn load_item(pool: &SqlitePool, vault_id: &VaultId, item_id: &ItemId) -> Result<Vec<u8>> {
+    let row = sqlx::query_as::<_, (Vec<u8>,)>(
+        "SELECT ciphertext FROM items WHERE vault_id = ? AND id = ?",
+    )
+    .bind(vault_id.to_string())
+    .bind(item_id.to_string())
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx_error)?
+    .ok_or(StoreError::ItemNotFound(*item_id))?;
 
     Ok(row.0)
 }
 
-/// Load a full encrypted item row by item identifier.
-pub async fn load_item_record(pool: &SqlitePool, item_id: &ItemId) -> Result<EncryptedItemData> {
+/// Load a full encrypted item row by vault and item identifier.
+pub async fn load_item_record(
+    pool: &SqlitePool,
+    vault_id: &VaultId,
+    item_id: &ItemId,
+) -> Result<EncryptedItemData> {
     let row = sqlx::query_as::<_, (String, String, String, Vec<u8>, i64, i64, i64)>(
         r#"
         SELECT id, vault_id, item_type, ciphertext, created_at, updated_at, sync_revision
         FROM items
-        WHERE id = ?
+        WHERE vault_id = ? AND id = ?
         "#,
     )
+    .bind(vault_id.to_string())
     .bind(item_id.to_string())
     .fetch_optional(pool)
     .await
@@ -91,17 +99,23 @@ pub async fn load_items_with_type(
 }
 
 /// Update an encrypted item ciphertext and revision metadata.
-pub async fn update_item(pool: &SqlitePool, item_id: &ItemId, ciphertext: &[u8]) -> Result<()> {
+pub async fn update_item(
+    pool: &SqlitePool,
+    vault_id: &VaultId,
+    item_id: &ItemId,
+    ciphertext: &[u8],
+) -> Result<()> {
     let now = Timestamp::now();
     let result = sqlx::query(
         r#"
         UPDATE items
         SET ciphertext = ?, updated_at = ?, sync_revision = sync_revision + 1
-        WHERE id = ?
+        WHERE vault_id = ? AND id = ?
         "#,
     )
     .bind(ciphertext)
     .bind(now.to_millis())
+    .bind(vault_id.to_string())
     .bind(item_id.to_string())
     .execute(pool)
     .await
@@ -193,9 +207,10 @@ pub async fn upsert_item_revision(
     Ok(())
 }
 
-/// Delete an encrypted item by identifier.
-pub async fn delete_item(pool: &SqlitePool, item_id: &ItemId) -> Result<()> {
-    let result = sqlx::query("DELETE FROM items WHERE id = ?")
+/// Delete an encrypted item by vault and item identifier.
+pub async fn delete_item(pool: &SqlitePool, vault_id: &VaultId, item_id: &ItemId) -> Result<()> {
+    let result = sqlx::query("DELETE FROM items WHERE vault_id = ? AND id = ?")
+        .bind(vault_id.to_string())
         .bind(item_id.to_string())
         .execute(pool)
         .await

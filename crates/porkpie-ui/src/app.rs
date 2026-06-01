@@ -110,29 +110,54 @@ pub fn App(cx: Scope) -> Element {
     let state_for_render = state.clone();
     let backend_for_render = backend.clone();
 
+    let screen = state_for_render.with(|s| s.screen.clone());
+
     cx.render(rsx! {
         style { "{APP_CSS}" }
         div { class: "app-shell",
             aside { class: "sidebar",
                 div { class: "brand", "Porkpie" }
                 nav { class: "nav", "aria-label": "Primary",
-                    a { href: "#onboarding", "Onboarding" }
-                    a { href: "#unlock", "Unlock" }
-                    a { href: "#items", "Items" }
-                    a { href: "#generator", "Generator" }
-                    a { href: "#backup", "Import/export" }
-                    a { href: "#settings", "Settings" }
+                    NavLink { state: state_for_render.clone(), target: Screen::Onboarding, label: "Onboarding".to_string() }
+                    NavLink { state: state_for_render.clone(), target: Screen::Unlock, label: "Unlock".to_string() }
+                    NavLink { state: state_for_render.clone(), target: Screen::List, label: "Items".to_string() }
+                    NavLink { state: state_for_render.clone(), target: Screen::PasswordGenerator, label: "Generator".to_string() }
+                    NavLink { state: state_for_render.clone(), target: Screen::ImportExport, label: "Import/export".to_string() }
+                    NavLink { state: state_for_render.clone(), target: Screen::Settings, label: "Settings".to_string() }
                 }
             }
             main { class: "workspace",
-                OnboardingPage { state: state_for_render.clone(), backend: backend_for_render.clone() }
-                UnlockPage { state: state_for_render.clone(), backend: backend_for_render.clone() }
-                ItemListPage { state: state_for_render.clone() }
-                ItemDetailPage { state: state_for_render.clone() }
-                PasswordGeneratorPage { state: state_for_render.clone() }
-                ImportExportPage { state: state_for_render.clone(), backend: backend_for_render.clone() }
-                SettingsPage { state: state_for_render.clone() }
+                match screen {
+                    Screen::Onboarding => rsx!(OnboardingPage { state: state_for_render.clone(), backend: backend_for_render.clone() }),
+                    Screen::Unlock => rsx!(UnlockPage { state: state_for_render.clone(), backend: backend_for_render.clone() }),
+                    Screen::List => rsx!(ItemListPage { state: state_for_render.clone() }),
+                    Screen::NewItem => rsx!(ItemDetailPage { state: state_for_render.clone() }),
+                    Screen::Detail(_id) => rsx!(ItemDetailPage { state: state_for_render.clone() }),
+                    Screen::PasswordGenerator => rsx!(PasswordGeneratorPage { state: state_for_render.clone() }),
+                    Screen::ImportExport => rsx!(ImportExportPage { state: state_for_render.clone(), backend: backend_for_render.clone() }),
+                    Screen::Settings => rsx!(SettingsPage { state: state_for_render.clone() }),
+                }
             }
+        }
+    })
+}
+
+#[derive(Props, PartialEq)]
+struct NavLinkProps {
+    state: UseRef<AppState>,
+    target: Screen,
+    label: String,
+}
+
+fn NavLink(cx: Scope<NavLinkProps>) -> Element {
+    let state = cx.props.state.clone();
+    let target = cx.props.target.clone();
+    let label = cx.props.label.clone();
+    cx.render(rsx! {
+        a {
+            href: "#",
+            onclick: move |_| state.with_mut(|s| s.screen = target.clone()),
+            "{label}"
         }
     })
 }

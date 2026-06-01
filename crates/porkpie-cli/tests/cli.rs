@@ -235,6 +235,14 @@ fn write_conflicting_args_fails() {
         "--prompt",
     ]);
     assert!(result.is_err());
+    let result = Cli::try_parse_from([
+        "porkpie",
+        "write",
+        "pie://Vault/Item/field",
+        "--stdin",
+        "--prompt",
+    ]);
+    assert!(result.is_err());
 }
 
 #[test]

@@ -59,11 +59,11 @@ async fn import_backup(context: &CommandContext, file: &Path) -> Result<()> {
         .await
         .map_err(map_store_error)?;
     for item in &items {
-        if update_item(&pool, &item.id, &item.ciphertext)
+        if update_item(&pool, &vault_id, &item.id, &item.ciphertext)
             .await
             .is_err()
         {
-            let _ = delete_item(&pool, &item.id).await;
+            let _ = delete_item(&pool, &vault_id, &item.id).await;
             store_item(&pool, item).await.map_err(map_store_error)?;
         }
     }

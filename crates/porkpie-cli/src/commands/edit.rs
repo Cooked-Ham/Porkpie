@@ -7,10 +7,13 @@ pub async fn run(context: &CommandContext, id: &str) -> Result<()> {
     let item_id = parse_item_id(id)?;
     let vault = unlock_current_vault(context).await?;
     let pool = context.pool().await?;
-    let record = load_item_record(&pool, &item_id)
+    let vault_id = vault.id;
+    let record = load_item_record(&pool, &vault_id, &item_id)
         .await
         .map_err(map_store_error)?;
-    let ciphertext = load_item(&pool, &item_id).await.map_err(map_store_error)?;
+    let ciphertext = load_item(&pool, &vault_id, &item_id)
+        .await
+        .map_err(map_store_error)?;
     let current_item = vault.decrypt_item(&ciphertext, &item_id, &record.item_type)?;
     let mut replacement = prompt_updated_item(&current_item)?;
 
@@ -19,11 +22,11 @@ pub async fn run(context: &CommandContext, id: &str) -> Result<()> {
     replacement.updated_at = porkpie_types::Timestamp::now();
 
     let updated_ciphertext = vault.encrypt_item(&replacement)?;
-    update_item(&pool, &item_id, &updated_ciphertext)
+    update_item(&pool, &vault_id, &item_id, &updated_ciphertext)
         .await
         .map_err(map_store_error)?;
 
-    let _record = load_item_record(&pool, &item_id)
+    let _record = load_item_record(&pool, &vault_id, &item_id)
         .await
         .map_err(map_store_error)?;
     println!(

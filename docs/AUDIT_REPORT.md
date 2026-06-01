@@ -6,14 +6,14 @@ Status: **Porkpie remains a foundational Rust prototype. Not safe for real crede
 
 ## Summary
 
-This is the final hostile QA pass after Phases 01-09. The audit inspected the full codebase for security footguns, misleading documentation, fake crypto, static mockups, and unchecked production code paths. The workspace passes all automated validation (169 tests, clean Clippy, release build). The code is honest about its limitations. No critical security failures were found in the current implementation, but several gaps remain before the project can claim MVP status.
+This is the final hostile QA pass after Phases 01-09. The audit inspected the full codebase for security footguns, misleading documentation, fake crypto, static mockups, and unchecked production code paths. The workspace passes all automated validation (170 tests, clean Clippy, release build). The code is honest about its limitations. No critical security failures were found in the current implementation, but several gaps remain before the project can claim MVP status.
 
 ## Global Validation Results
 
 ```bash
 cargo fmt --all --check      # PASS
 cargo clippy --workspace --all-targets -- -D warnings  # PASS (0 warnings)
-cargo test --workspace       # PASS (169 tests, 0 failures)
+cargo test --workspace       # PASS (170 tests, 0 failures)
 cargo build --workspace      # PASS
 cargo build --workspace --release  # PASS
 ```
@@ -42,6 +42,7 @@ Additional validation:
 | `LastWriteWins` (default) | **Fixed** | Default sync strategy is now `PreserveConflict`. `LastWriteWins` is still available as an option. |
 | `ON CONFLICT(id)` (items) | **Fixed** | Both server and client schemas now use `ON CONFLICT(vault_id, id)` for items. |
 | `id TEXT PRIMARY KEY` (items) | **Fixed** | Composite `PRIMARY KEY (vault_id, id)` on both server and client. |
+| Local store item queries by `id` alone | **Fixed** | All `load_item`, `update_item`, `delete_item` queries now use `WHERE vault_id = ? AND id = ?`. |
 
 ## Changes Since Phase 01-09
 
@@ -93,7 +94,7 @@ Additional validation:
 - Fixed `ON CONFLICT(id)` in `porkpie-store/src/item_store.rs` to `ON CONFLICT(vault_id, id)`.
 - Updated client migrations to match server schema.
 - Updated `docs/SECURITY_INVARIANTS.md` to document composite PK.
-- All validation passes: 169 tests, 0 warnings, 0 errors.
+- All validation passes: 170 tests, 0 warnings, 0 errors.
 
 ## Completion Gate Assessment
 
@@ -193,12 +194,14 @@ Additional validation:
 
 1. **Server config placeholder rejection**: Config now rejects placeholder API keys (`dev`, `test`, `password`, `secret`, `porkpie`, `change-me`, `changeme`, `replace-with-a-generated-secret`) and requires >= 32 characters.
 2. **Server item ID integrity**: Changed from `id TEXT PRIMARY KEY` to composite `PRIMARY KEY (vault_id, id)` on both server and client schemas. Added migration for existing DBs.
-3. **Debug redaction**: `RecoveryKit` and `PasswordGeneratorState` now have custom redacted `Debug` implementations.
-4. **CLI secret input**: All secret prompts use hidden input. `porkpie write` supports `--stdin` and `--prompt`.
-5. **Sync strategy safety**: Default changed from `LastWriteWins` to `PreserveConflict`. Invalid strategies rejected at runtime.
-6. **CORS hardening**: Replaced `CorsLayer::permissive()` with explicit origin allowlist from config. No wildcards allowed.
-7. **Web storage**: WASM now uses encrypted `localStorage` instead of returning `Unavailable`.
-8. **Documentation truth**: README, STATUS, DATA_MODEL, SECURITY_INVARIANTS all updated to match code.
+3. **Local store item scoping**: All local store item operations (load, update, delete) now require `vault_id` to prevent cross-vault collisions.
+4. **Debug redaction**: `RecoveryKit` and `PasswordGeneratorState` now have custom redacted `Debug` implementations.
+5. **CLI secret input**: All secret prompts use hidden input. `porkpie write` supports `--stdin` and `--prompt` with true mutual exclusion.
+6. **Sync strategy safety**: Default changed from `LastWriteWins` to `PreserveConflict`. Invalid strategies rejected at runtime.
+7. **CORS hardening**: Replaced `CorsLayer::permissive()` with explicit origin allowlist from config. No wildcards allowed.
+8. **Web storage**: WASM now uses encrypted `localStorage` instead of returning `Unavailable`.
+9. **UI screen routing**: App now renders only the active screen. Navigation links update `state.screen`.
+10. **Documentation truth**: README, STATUS, DATA_MODEL, SECURITY_INVARIANTS, COMPLETION_GATE all updated to match code.
 
 ## Security Issues Remaining
 

@@ -19,7 +19,7 @@ pub async fn run_encrypted(context: &CommandContext, output: Option<PathBuf>) ->
 
     for (item_id, _) in item_refs {
         items.push(
-            load_item_record(&pool, &item_id)
+            load_item_record(&pool, &vault_id, &item_id)
                 .await
                 .map_err(map_store_error)?,
         );

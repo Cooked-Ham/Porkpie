@@ -6,13 +6,16 @@ pub async fn run(context: &CommandContext, uri_str: &str, value: &str) -> Result
     let uri = parse_pie_uri(uri_str)?;
     let vault = unlock_vault_by_name(context, &uri.vault_name).await?;
     let pool = context.pool().await?;
+    let vault_id = vault.id;
 
     let (item_id, _item) = find_item_by_name(&vault, &uri.item_name)?;
-    let record = load_item_record(&pool, &item_id)
+    let record = load_item_record(&pool, &vault_id, &item_id)
         .await
         .map_err(map_store_error)?;
 
-    let ciphertext = load_item(&pool, &item_id).await.map_err(map_store_error)?;
+    let ciphertext = load_item(&pool, &vault_id, &item_id)
+        .await
+        .map_err(map_store_error)?;
     let mut decrypted = vault.decrypt_item(&ciphertext, &item_id, &record.item_type)?;
 
     decrypted
@@ -21,7 +24,7 @@ pub async fn run(context: &CommandContext, uri_str: &str, value: &str) -> Result
         .map_err(|e| CliError::FieldError(e.to_string()))?;
 
     let new_ciphertext = vault.encrypt_item(&decrypted)?;
-    update_item(&pool, &item_id, &new_ciphertext)
+    update_item(&pool, &vault_id, &item_id, &new_ciphertext)
         .await
         .map_err(map_store_error)?;
 

@@ -476,7 +476,7 @@ mod sqlite_impl {
                 let guard = self.state.lock().await;
                 guard.pool.clone()
             };
-            porkpie_store::update_item(&pool, &record.id, &record.ciphertext)
+            porkpie_store::update_item(&pool, &self.summary.id, &record.id, &record.ciphertext)
                 .await
                 .map_err(|error| VaultStoreError::Database(error.to_string()))?;
             Ok(DecryptedItem::from(&item))
@@ -491,7 +491,7 @@ mod sqlite_impl {
                 let guard = self.state.lock().await;
                 guard.pool.clone()
             };
-            porkpie_store::delete_item(&pool, &id)
+            porkpie_store::delete_item(&pool, &self.summary.id, &id)
                 .await
                 .map_err(|error| VaultStoreError::Database(error.to_string()))?;
             Ok(())

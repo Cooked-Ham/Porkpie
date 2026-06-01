@@ -49,10 +49,10 @@ pub enum Commands {
         /// Value to write. Omit if using --stdin or --prompt.
         value: Option<String>,
         /// Read value from stdin (hidden, no echo).
-        #[arg(long, conflicts_with = "value")]
+        #[arg(long, conflicts_with_all = ["value", "prompt"])]
         stdin: bool,
         /// Prompt for value interactively (hidden, no echo).
-        #[arg(long, conflicts_with = "value")]
+        #[arg(long, conflicts_with_all = ["value", "stdin"])]
         prompt: bool,
     },
     /// Copy a field value to clipboard via pie:// URI.
