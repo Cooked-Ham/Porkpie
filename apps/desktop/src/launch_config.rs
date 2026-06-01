@@ -69,14 +69,19 @@ impl LaunchConfig {
         if std::env::var_os("PORKPIE_DATABASE_URL").is_none() {
             std::env::set_var("PORKPIE_DATABASE_URL", &self.database_url);
         }
-        dioxus_desktop::Config::default().with_window(
-            dioxus_desktop::WindowBuilder::new()
-                .with_title(&self.window_title)
-                .with_inner_size(dioxus_desktop::LogicalSize::new(
-                    f64::from(self.window_width),
-                    f64::from(self.window_height),
-                )),
-        )
+        let data_dir = platform_data_dir().unwrap_or_else(|| PathBuf::from("."));
+        let _ = std::fs::create_dir_all(&data_dir);
+        dioxus_desktop::Config::default()
+            .with_data_directory(&data_dir)
+            .with_resource_directory(&data_dir)
+            .with_window(
+                dioxus_desktop::WindowBuilder::new()
+                    .with_title(&self.window_title)
+                    .with_inner_size(dioxus_desktop::LogicalSize::new(
+                        f64::from(self.window_width),
+                        f64::from(self.window_height),
+                    )),
+            )
     }
 }
 

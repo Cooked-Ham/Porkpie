@@ -16,10 +16,12 @@ use launch_config::LaunchConfig;
 fn main() {
     let config = LaunchConfig::load();
 
-    // The database startup check is handled by the UI so that failures
-    // surface as a friendly GUI error screen instead of a terminal message.
-    // The UI initial_load future connects to SQLite and routes to the
-    // DbError screen on failure, offering Retry / Open Data Folder / Reset.
+    // Create the tokio runtime and keep it alive for the entire app.
+    // The UI's initial_load future (and all other SQLx-backed vault I/O)
+    // needs a tokio reactor running. The runtime is dropped automatically
+    // when main() returns after the Dioxus window closes.
+    let _runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+
     let dioxus_config = config.into_dioxus_config();
     dioxus_desktop::launch_cfg(porkpie_ui::App, dioxus_config);
 }
