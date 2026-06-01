@@ -10,9 +10,9 @@ mod windows_agent {
     use base64::Engine;
     use porkpie_agent::{Ed25519Signer, SshSigner};
     use porkpie_cli::commands::ssh::run_agent_with_unlocked_vault;
-    use porkpie_core::{LocalSecretKey, Vault};
+    use porkpie_core::{Item, LocalSecretKey, Vault};
     use porkpie_store::store_vault;
-    use porkpie_types::{Item, ItemType, SSHKeySecret};
+    use porkpie_types::{ItemType, SSHKeySecret};
     use std::path::PathBuf;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::windows::named_pipe::ClientOptions;
