@@ -189,3 +189,102 @@ fn rotate_vault_key_changes_wrapped_key_and_re_encrypts_items() {
         panic!("expected SecureNote");
     }
 }
+
+#[test]
+fn kdf_params_persisted_after_creation() {
+    let secret_key = test_secret_key();
+    let (vault, _recovery) =
+        Vault::create("TestVault", "correct horse battery staple", &secret_key)
+            .expect("vault should be created");
+
+    // Default params should be stored
+    let params = vault.kdf_params();
+    assert_eq!(params.time_cost, 2);
+    assert_eq!(params.mem_cost, 19456);
+    assert_eq!(params.parallelism, 1);
+}
+
+#[test]
+fn kdf_params_used_during_unlock() {
+    let secret_key = test_secret_key();
+    let (mut vault, _recovery) =
+        Vault::create("TestVault", "correct horse battery staple", &secret_key)
+            .expect("vault should be created");
+    vault.lock().expect("vault should lock");
+
+    // Unlock should succeed using stored params
+    vault
+        .unlock("correct horse battery staple", &secret_key)
+        .expect("unlock with stored params should work");
+    assert_eq!(vault.state(), VaultState::Unlocked);
+}
+
+#[test]
+fn kdf_params_persisted_in_encrypted_metadata() {
+    let secret_key = test_secret_key();
+    let (vault, _recovery) =
+        Vault::create("TestVault", "correct horse battery staple", &secret_key)
+            .expect("vault should be created");
+
+    let loaded = Vault::from_encrypted_metadata(
+        vault.id,
+        vault.name.clone(),
+        vault.created_at,
+        vault.salt,
+        vault.master_key_wrapped().clone(),
+        vault.sync_revision(),
+        *vault.kdf_params(),
+    );
+
+    assert_eq!(loaded.kdf_params(), vault.kdf_params());
+}
+
+#[test]
+fn vault_unlocks_after_kdf_params_change() {
+    let secret_key = test_secret_key();
+    let password = "correct horse battery staple";
+    let (vault, _recovery) =
+        Vault::create("TestVault", password, &secret_key).expect("vault should be created");
+
+    // Change KDF params to hardened and re-wrap vault key
+    let hardened = porkpie_crypto::Argon2Params {
+        time_cost: 4,
+        mem_cost: 65536,
+        parallelism: 1,
+    };
+
+    // Derive new master key with hardened params
+    let password_secret = secrecy::Secret::new(password.to_owned());
+    let new_master_key = zeroize::Zeroizing::new(
+        porkpie_crypto::derive_key(
+            &password_secret,
+            secret_key.as_bytes(),
+            &vault.salt,
+            &hardened,
+        )
+        .expect("derive with hardened params"),
+    );
+
+    // Get current vault key and re-wrap with new master key
+    let vault_key = vault.vault_key().expect("vault should be unlocked");
+    let new_wrapped = porkpie_crypto::wrap_vault_key(&new_master_key, vault_key)
+        .expect("wrap with new master key");
+
+    // Create a new vault from metadata with hardened params and new wrapped key
+    let mut loaded = Vault::from_encrypted_metadata(
+        vault.id,
+        vault.name.clone(),
+        vault.created_at,
+        vault.salt,
+        new_wrapped,
+        vault.sync_revision(),
+        hardened,
+    );
+
+    // Unlock should now work with hardened params
+    loaded
+        .unlock(password, &secret_key)
+        .expect("unlock after kdf change should work");
+    assert_eq!(loaded.state(), VaultState::Unlocked);
+    assert_eq!(loaded.kdf_params().time_cost, 4);
+}

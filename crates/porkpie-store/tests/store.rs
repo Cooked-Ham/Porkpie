@@ -240,3 +240,107 @@ fn encrypted_item(vault_id: VaultId, ciphertext: Vec<u8>) -> EncryptedItemData {
         0,
     )
 }
+
+#[tokio::test]
+async fn transactional_rotation_updates_all_items() {
+    let pool = test_pool().await.expect("test database should connect");
+    let (vault, _) = Vault::create(
+        "TestVault",
+        "correct horse battery staple",
+        &test_secret_key(),
+    )
+    .expect("vault should be created");
+    store_vault(&pool, &vault)
+        .await
+        .expect("vault should store");
+
+    let item1 = encrypted_item(vault.id, b"item1-v1".to_vec());
+    let item2 = encrypted_item(vault.id, b"item2-v1".to_vec());
+    store_item(&pool, &item1).await.expect("item1 should store");
+    store_item(&pool, &item2).await.expect("item2 should store");
+
+    let new_wrapped = b"new-wrapped-key".to_vec();
+    let reencrypted = vec![
+        (item1.id, b"item1-v2".to_vec()),
+        (item2.id, b"item2-v2".to_vec()),
+    ];
+
+    porkpie_store::rotate_vault_key_transactional(
+        &pool,
+        &vault.id,
+        &new_wrapped,
+        &reencrypted,
+        Some(vault.kdf_params()),
+    )
+    .await
+    .expect("transactional rotation should succeed");
+
+    // Verify both items updated
+    assert_eq!(
+        load_item(&pool, &vault.id, &item1.id)
+            .await
+            .expect("load item1"),
+        b"item1-v2".to_vec()
+    );
+    assert_eq!(
+        load_item(&pool, &vault.id, &item2.id)
+            .await
+            .expect("load item2"),
+        b"item2-v2".to_vec()
+    );
+
+    // Verify vault wrapped key updated
+    let loaded_vault = load_vault(&pool, &vault.id).await.expect("load vault");
+    assert_eq!(loaded_vault.master_key_wrapped, new_wrapped);
+}
+
+#[tokio::test]
+async fn transactional_rotation_rolls_back_on_missing_item() {
+    let pool = test_pool().await.expect("test database should connect");
+    let (vault, _) = Vault::create(
+        "TestVault",
+        "correct horse battery staple",
+        &test_secret_key(),
+    )
+    .expect("vault should be created");
+    store_vault(&pool, &vault)
+        .await
+        .expect("vault should store");
+
+    let item1 = encrypted_item(vault.id, b"item1-v1".to_vec());
+    store_item(&pool, &item1).await.expect("item1 should store");
+
+    // Try to rotate with a non-existent item ID
+    let fake_id = ItemId::new();
+    let new_wrapped = b"new-wrapped-key".to_vec();
+    let reencrypted = vec![
+        (item1.id, b"item1-v2".to_vec()),
+        (fake_id, b"fake-v2".to_vec()),
+    ];
+
+    let result = porkpie_store::rotate_vault_key_transactional(
+        &pool,
+        &vault.id,
+        &new_wrapped,
+        &reencrypted,
+        Some(vault.kdf_params()),
+    )
+    .await;
+
+    assert!(result.is_err(), "rotation should fail for missing item");
+
+    // Verify item1 was NOT updated (transaction rolled back)
+    assert_eq!(
+        load_item(&pool, &vault.id, &item1.id)
+            .await
+            .expect("load item1"),
+        b"item1-v1".to_vec()
+    );
+
+    // Verify vault wrapped key was NOT updated
+    let loaded_vault = load_vault(&pool, &vault.id).await.expect("load vault");
+    assert_eq!(
+        loaded_vault.master_key_wrapped,
+        vault.master_key_wrapped().clone()
+    );
+}

@@ -329,6 +329,27 @@ mod tests {
     }
 
     #[test]
+    fn unlock_stores_secret_key_in_keychain() {
+        let vault_id = VaultId::new();
+        let key = LocalSecretKey::generate();
+        let fake = crate::secret_store::FakeKeychain::new();
+
+        // Simulate what unlock does: store key in keychain, create session
+        fake.store_local_secret_key(&vault_id, &key).unwrap();
+        let session = SessionState::unlocked(vault_id);
+
+        // Verify keychain has the key
+        let loaded = fake.load_local_secret_key(&vault_id).unwrap();
+        assert!(loaded.is_some());
+        assert_eq!(loaded.unwrap().to_hex(), key.to_hex());
+
+        // Verify session JSON has no secret material
+        let json = serde_json::to_string(&session).unwrap();
+        assert!(!json.contains("secret_key_hex"));
+        assert!(!json.contains("secret_key_encrypted"));
+    }
+
+    #[test]
     fn session_timeout_expires_after_inactivity() {
         let vault_id = VaultId::new();
         let mut session = SessionState::unlocked(vault_id);

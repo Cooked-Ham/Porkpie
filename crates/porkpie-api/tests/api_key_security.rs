@@ -95,3 +95,122 @@ fn config_rejects_missing_api_key_env() {
         std::env::set_var("PORKPIE_API_KEY", value);
     }
 }
+
+#[tokio::test]
+async fn api_key_creation_returns_key_id_and_hash() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+
+    let raw_key = "my-test-api-key-123";
+    let (key_id, key_hash) = db::upsert_api_key(&pool, raw_key, "test-label")
+        .await
+        .expect("upsert api key");
+
+    assert!(key_id > 0, "key_id should be positive");
+    assert_eq!(key_hash, db::hash_api_key(raw_key));
+
+    // Verify label is stored
+    let rows = sqlx::query("SELECT label FROM api_keys WHERE id = ?")
+        .bind(key_id)
+        .fetch_all(&pool)
+        .await
+        .expect("query api keys");
+    assert_eq!(rows.len(), 1);
+    let label: String = rows[0].get("label");
+    assert_eq!(label, "test-label");
+}
+
+#[tokio::test]
+async fn last_used_at_is_updated_on_auth() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+
+    let raw_key = "my-test-api-key-456";
+    db::upsert_api_key(&pool, raw_key, "default")
+        .await
+        .expect("upsert api key");
+
+    // Verify last_used_at is NULL initially
+    let rows = sqlx::query("SELECT last_used_at FROM api_keys WHERE api_key_hash = ?")
+        .bind(db::hash_api_key(raw_key))
+        .fetch_all(&pool)
+        .await
+        .expect("query api keys");
+    let last_used: Option<i64> = rows[0].get("last_used_at");
+    assert!(last_used.is_none(), "last_used_at should be null initially");
+
+    // Touch the key
+    db::touch_api_key(&pool, raw_key)
+        .await
+        .expect("touch api key");
+
+    // Verify last_used_at is now set
+    let rows = sqlx::query("SELECT last_used_at FROM api_keys WHERE api_key_hash = ?")
+        .bind(db::hash_api_key(raw_key))
+        .fetch_all(&pool)
+        .await
+        .expect("query api keys");
+    let last_used: Option<i64> = rows[0].get("last_used_at");
+    assert!(
+        last_used.is_some(),
+        "last_used_at should be set after touch"
+    );
+}
+
+#[tokio::test]
+async fn revoke_by_id_sets_revoked_at() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+
+    let raw_key = "my-test-api-key-789";
+    let (key_id, _) = db::upsert_api_key(&pool, raw_key, "default")
+        .await
+        .expect("upsert api key");
+
+    db::revoke_api_key_by_id(&pool, key_id)
+        .await
+        .expect("revoke api key");
+
+    // Verify revoked_at is set
+    let rows = sqlx::query("SELECT revoked_at, active FROM api_keys WHERE id = ?")
+        .bind(key_id)
+        .fetch_all(&pool)
+        .await
+        .expect("query api keys");
+    let revoked_at: Option<i64> = rows[0].get("revoked_at");
+    let active: i32 = rows[0].get("active");
+    assert!(revoked_at.is_some(), "revoked_at should be set");
+    assert_eq!(active, 0, "active should be 0");
+}
+
+#[tokio::test]
+async fn multiple_api_keys_can_coexist() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+
+    let key1 = "api-key-alpha";
+    let key2 = "api-key-beta";
+
+    db::upsert_api_key(&pool, key1, "alpha")
+        .await
+        .expect("upsert key1");
+    db::upsert_api_key(&pool, key2, "beta")
+        .await
+        .expect("upsert key2");
+
+    assert!(db::api_key_exists(&pool, key1).await.expect("check key1"));
+    assert!(db::api_key_exists(&pool, key2).await.expect("check key2"));
+
+    let count = db::count_active_api_keys(&pool)
+        .await
+        .expect("count active");
+    assert_eq!(count, 2);
+}

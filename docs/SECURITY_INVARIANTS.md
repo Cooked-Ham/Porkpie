@@ -168,6 +168,23 @@ These thirteen invariants are fundamental to Porkpie's operation. Violating any 
 - *Good*: Emitting a compile-time or runtime panic on unresolved security paths.
 - *Bad*: Returning Ok(true) for MAC validations to pass a test suite.
 
+## 14. OS Keychain Storage
+
+**The Rule:** The local secret key must be stored in the OS keychain (or equivalent platform-provided secure storage) whenever available.
+
+**Why it matters:** The local secret key is the second factor for vault unlock. Storing it in the session file or in plaintext on disk reduces security to a single-factor system.
+
+**Enforcement:**
+- `unlock` stores the local secret key in the OS keychain immediately after successful unlock.
+- `init` stores the local secret key in the OS keychain during vault creation.
+- `SessionState::unlocked()` does not store the local secret key in the session file.
+- Legacy session files with `secret_key_hex` or `secret_key_encrypted` are migrated to the keychain on first load.
+- If the keychain is unavailable, the user must explicitly opt into `--no-store-secret` or re-enter the secret key on each unlock.
+
+**Good vs Bad:**
+- *Good*: Using `keyring` on Windows (Credential Manager), macOS (Keychain), or Linux (Secret Service).
+- *Bad*: Storing the local secret key in a JSON session file, even if obfuscated.
+
 ## 13. Unavailable Features Clearly Marked
 
 **The Rule:** Incomplete user-facing functionality must strictly represent as "Not Implemented".
