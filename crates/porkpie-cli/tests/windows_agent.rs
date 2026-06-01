@@ -60,10 +60,7 @@ mod windows_agent {
 
     #[tokio::test]
     async fn windows_agent_full_handshake() {
-        let (vault, password, _temp_dir) = create_test_vault().await;
-        let secret_key = LocalSecretKey::generate();
-        let mut unlocked = vault;
-        unlocked.unlock(&password, &secret_key).unwrap();
+        let (unlocked, _password, _temp_dir) = create_test_vault().await;
 
         // Start the agent in a background task on a custom pipe
         let pipe_name = r"\\.\pipe\porkpie-e2e-test";
@@ -98,36 +95,5 @@ mod windows_agent {
         // Clean up
         drop(client);
         agent_handle.abort();
-    }
-
-    #[tokio::test]
-    async fn windows_agent_fails_without_keys() {
-        let temp_dir = std::env::temp_dir().join(format!(
-            "porkpie-windows-agent-empty-test-{}",
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::create_dir_all(&temp_dir).unwrap();
-        let db_path = temp_dir.join("test.db");
-        let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
-        let pool = porkpie_store::connect_database(&db_url).await.unwrap();
-
-        let password = "SuperSecretPassword123!";
-        let secret_key = LocalSecretKey::generate();
-        let (vault, _recovery_kit) = Vault::create("TestVault", password, &secret_key).unwrap();
-        store_vault(&pool, &vault).await.unwrap();
-
-        let mut unlocked = vault;
-        unlocked.unlock(password, &secret_key).unwrap();
-
-        // Should succeed because the vault has a valid SSH key
-        let result = run_agent_with_unlocked_vault(&unlocked).await;
-        // It will fail because it tries to bind the DEFAULT_PIPE_NAME which
-        // may conflict with the Windows service, or it will block forever.
-        // For this test, we use a custom pipe but the function uses DEFAULT_PIPE_NAME.
-        // So we expect it to either succeed or fail with a known error.
-        assert!(
-            result.is_ok() || result.is_err(),
-            "agent should either start or fail with a known error"
-        );
     }
 }
