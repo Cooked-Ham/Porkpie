@@ -10,5 +10,6 @@ zeroize = { version = "1.8", features = ["derive"] }
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 rand = "0.8"
 hex = "0.4"
+ssh-key = { version = "0.7.0-rc.10", features = ["ed25519", "alloc"] }
 
 [dev-dependencies]

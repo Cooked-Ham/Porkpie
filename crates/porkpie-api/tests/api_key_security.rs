@@ -258,3 +258,55 @@ async fn admin_flag_can_be_set_and_checked() {
         "revoked key should not be admin"
     );
 }
+
+#[tokio::test]
+async fn audit_log_records_api_key_add() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+
+    db::log_admin_audit(&pool, "api_key_add").await.unwrap();
+
+    let rows = sqlx::query("SELECT event, vault_id FROM audit_log WHERE event = 'api_key_add'")
+        .fetch_all(&pool)
+        .await
+        .expect("query audit log");
+    assert_eq!(rows.len(), 1);
+    let event: String = rows[0].get("event");
+    let vault_id: Option<String> = rows[0].get("vault_id");
+    assert_eq!(event, "api_key_add");
+    assert!(vault_id.is_none(), "admin events should have null vault_id");
+}
+
+#[tokio::test]
+async fn audit_log_records_api_key_revoke() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+
+    db::log_admin_audit(&pool, "api_key_revoke").await.unwrap();
+
+    let rows = sqlx::query("SELECT event FROM audit_log WHERE event = 'api_key_revoke'")
+        .fetch_all(&pool)
+        .await
+        .expect("query audit log");
+    assert_eq!(rows.len(), 1);
+}
+
+#[tokio::test]
+async fn audit_log_records_api_key_self_revoke_denied() {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+
+    db::log_admin_audit(&pool, "api_key_self_revoke_denied").await.unwrap();
+
+    let rows = sqlx::query("SELECT event FROM audit_log WHERE event = 'api_key_self_revoke_denied'")
+        .fetch_all(&pool)
+        .await
+        .expect("query audit log");
+    assert_eq!(rows.len(), 1);
+}

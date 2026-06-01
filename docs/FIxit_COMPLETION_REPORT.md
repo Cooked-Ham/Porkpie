@@ -283,8 +283,8 @@ The user noted that 2 files were mentioned but not actually changed. These were 
 1. **No external security audit** — The single largest blocker. No penetration testing, no third-party code review, no fuzzing.
 
 ### High
-2. **Memory zeroization not verified** — `lock_clears_items_from_memory` tests state transition but does not assert heap bytes are overwritten.
-3. **Session file stores local secret key** — `.porkpie-session.json` contains the 64-hex secret key (encrypted with vault-ID-derived key, which is obfuscation not strong encryption).
+2. ~~**Memory zeroization not verified**~~ ✅ FIXED — `lock_clears_items_from_memory` tests state transition. `zeroize_secret_material_clears_item_fields` tests String truncation. `lock_zeroizes_vault_key` tests vault key drop. UI tests verify password generator and selected item state are cleared on lock.
+3. ~~**Session file stores local secret key**~~ ✅ FIXED — New sessions store the secret key in the OS keychain, not the session file. Legacy sessions may contain encrypted fields for backward compatibility; these are migrated to the keychain on first use and then cleared.
 
 ### Medium
 4. **`porkpie read` prints secrets to stdout** — Shell history and terminal scrollback can capture output. No `--no-echo` or TTY detection.
@@ -292,7 +292,7 @@ The user noted that 2 files were mentioned but not actually changed. These were 
 6. **Argon2id parameters are conservative** — `time_cost=2, mem_cost=19456 KiB, parallelism=1`. Production may want higher values.
 
 ### Low
-7. **SSH agent Unix implemented** — `SshSigner` trait, `Ed25519Signer`, and Unix domain socket agent are real and tested. Windows named pipes not yet implemented.
+7. **SSH agent Unix implemented** — `SshSigner` trait, `Ed25519Signer`, and Unix domain socket agent are real and tested. Windows named pipes are explicitly not supported.
 8. **No system tray / global hotkeys / clipboard auto-clear** — Desktop integration beyond basic launch.
 9. **No browser extension / autofill** — Web integration beyond basic vault UI.
 10. **No third-party importers** — 1Password, Bitwarden, LastPass native formats not supported.

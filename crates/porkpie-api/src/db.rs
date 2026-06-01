@@ -176,6 +176,16 @@ pub async fn revoke_api_key_by_id(pool: &SqlitePool, key_id: i64) -> Result<Stri
     Ok(key_hash.0)
 }
 
+/// Fetch the hash of an active API key by its ID.
+pub async fn api_key_hash_by_id(pool: &SqlitePool, key_id: i64) -> Result<Option<String>> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT api_key_hash FROM api_keys WHERE id = ? AND active = 1")
+            .bind(key_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.map(|r| r.0))
+}
+
 /// Count active API keys.
 pub async fn count_active_api_keys(pool: &SqlitePool) -> Result<i64> {
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_keys WHERE active = 1")
@@ -540,6 +550,21 @@ async fn log_audit(pool: &SqlitePool, vault_id: &str, event: &str) -> Result<()>
         "#,
     )
     .bind(vault_id)
+    .bind(event)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Log an admin API key event without a vault ID.
+pub async fn log_admin_audit(pool: &SqlitePool, event: &str) -> Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO audit_log (vault_id, event, created_at)
+        VALUES (NULL, ?, strftime('%s', 'now'))
+        "#,
+    )
     .bind(event)
     .execute(pool)
     .await?;

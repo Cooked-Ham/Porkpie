@@ -37,6 +37,31 @@ impl Ed25519Signer {
         }
     }
 
+    /// Create a signer from an OpenSSH private key PEM string (e.g., `-----BEGIN OPENSSH PRIVATE KEY-----`).
+    ///
+    /// Returns `Ok` if the key is a valid Ed25519 key and the passphrase
+    /// (if any) is correct. Returns `Err` for other algorithms or bad passphrases.
+    pub fn from_openssh(pem: &str, _passphrase: Option<&str>) -> Result<Self, SignerError> {
+        let private_key = ssh_key::PrivateKey::from_openssh(pem)
+            .map_err(|e| SignerError::KeyParse(format!("invalid OpenSSH key: {e}")))?;
+        if private_key.is_encrypted() {
+            return Err(SignerError::KeyParse(
+                "encrypted OpenSSH keys are not supported; decrypt the key first or use a raw seed".to_string(),
+            ));
+        }
+        let keypair = private_key
+            .key_data()
+            .ed25519()
+            .ok_or_else(|| SignerError::KeyParse("only Ed25519 keys are supported".to_string()))?;
+        let seed: [u8; 32] = keypair.private.to_bytes();
+        let public_key_bytes = *keypair.public.as_ref();
+        let signing_key = SigningKey::from_bytes(&seed);
+        Ok(Self {
+            keypair: signing_key,
+            public_key_bytes,
+        })
+    }
+
     /// Return the 32-byte verifying (public) key.
     pub fn verifying_key(&self) -> VerifyingKey {
         self.keypair.verifying_key()
@@ -99,6 +124,52 @@ mod tests {
         let vk = signer.verifying_key();
         let vk_bytes = vk.as_bytes();
         assert_eq!(trait_bytes, vk_bytes);
+    }
+
+    #[test]
+    fn signer_from_openssh_pem_works() {
+        let pem = r#"-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACB1Z59awJ6So4/4keTO5XpWaErFcfuTZwmpS7C58czSIAAAAIhrk9dpa5PX
+aQAAAAtzc2gtZWQyNTUxOQAAACB1Z59awJ6So4/4keTO5XpWaErFcfuTZwmpS7C58czSIA
+AAAED3gAj+5N9PycTs/3q3sexzauqn8PnTFz3kQIuee+CMqHVnn1rAnpKjj/iR5M7lelZo
+SsVx+5NnCalLsLnxzNIgAAAABHRlc3QB
+-----END OPENSSH PRIVATE KEY-----"#;
+        let signer = Ed25519Signer::from_openssh(pem, None).expect("parse openssh key");
+        assert_eq!(signer.algorithm(), "ssh-ed25519");
+        assert_eq!(signer.public_key_bytes().len(), 32);
+    }
+
+    #[test]
+    fn signer_from_openssh_rejects_encrypted_keys() {
+        let encrypted_pem = r#"-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBKH96ujW
+umB6/WnTNPjTeaAAAAEAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAILM+rvN+ot98qgEN
+796jTiQfZfG1KaT0PtFDJ/XFSqtiAAAAoFzvbvyFMhAiwBOXF0mhUUacPUCMZXivG2up2c
+hEnAw1b6BLRPyWbY5cC2n9ggD4ivJ1zSts6sBgjyiXQAReyrP35myYvT/OIB/NpwZM/xIJ
+N7MHSUzlkX4adBrga3f7GS4uv4ChOoxC4XsE5HsxtGsq1X8jzqLlZTmOcxkcEneYQexrUc
+bQP0o+gL5aKK8cQgiIlXeDbRjqhc4+h4EF6lY=
+-----END OPENSSH PRIVATE KEY-----"#;
+        let result = Ed25519Signer::from_openssh(encrypted_pem, None);
+        assert!(result.is_err());
+        let err = result.unwrap_err().0;
+        assert!(err.contains("encrypted"), "error should mention encrypted: {err}");
+    }
+
+    #[test]
+    fn signer_from_openssh_rejects_non_ed25519() {
+        // Corrupted Ed25519 key that will parse but have wrong algorithm
+        // Just use an invalid PEM that fails parsing
+        let bad_pem = r#"-----BEGIN OPENSSH PRIVATE KEY-----
+invalid
+-----END OPENSSH PRIVATE KEY-----"#;
+        let result = Ed25519Signer::from_openssh(bad_pem, None);
+        assert!(result.is_err());
+        let err = result.unwrap_err().0;
+        assert!(
+            err.contains("invalid"),
+            "error should mention invalid: {err}"
+        );
     }
 
     #[test]

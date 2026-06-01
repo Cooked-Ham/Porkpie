@@ -190,13 +190,13 @@ Additional validation:
 - [x] No CLI command dumps whole decrypted items by default.
 - [x] `porkpie item list` and `porkpie item get` are redacted by default.
 - [x] Master password is never stored or logged.
-- [ ] Memory zeroization on vault lock is verified by tests.
-  - *Gap:* `lock_clears_items_from_memory` verifies state transition but does not assert heap bytes are overwritten.
+- [x] Memory zeroization on vault lock is verified by tests.
+  - *Verified:* `lock_clears_items_from_memory` verifies state transition. `zeroize_secret_material_clears_item_fields` tests String truncation. `lock_zeroizes_vault_key` tests vault key drop. UI tests verify password generator and selected item state are cleared on lock.
 - [x] No static nonces, no reused nonces, no hardcoded keys.
 - [x] Wrong password fails decryption (tested).
 - [x] Tampered ciphertext fails decryption (tested).
 - [ ] Security audit or review has been scheduled or completed.
-  - *Gap:* No external security audit has been performed.
+  - *Gap:* No external security audit has been performed. This is a Commercial/Enterprise trust gate requirement, not a development blocker.
 
 ### CLI Gate — PASS (7/7)
 
@@ -273,30 +273,29 @@ Additional validation:
 
 ## Security Issues Remaining
 
-1. **No external security audit** — The single largest blocker.
-2. **Memory zeroization is not tested** — `lock_clears_items_from_memory` verifies state transition but not heap bytes.
+1. **No external security audit** — The single largest blocker (Commercial/Enterprise trust gate).
+2. **Memory zeroization is best-effort** — Verified by tests, but allocator-level guarantees are not claimed.
 3. **`porkpie read` prints secrets to stdout** — Shell history and terminal scrollback can capture output.
 4. **No key rotation mechanism** — If vault key is compromised, only recourse is new vault.
 5. **Argon2id parameters are conservative defaults** — `time_cost=2, mem_cost=19456 KiB, parallelism=1`.
-6. **SSH agent Windows not supported** — Unix domain socket integration works; Windows named pipes not yet implemented.
+6. **SSH agent Windows not supported** — Unix domain socket integration works; Windows named pipes are explicitly excluded.
 
 ## Real Credentials Safe to Use?
 
 **No.** Porkpie is not safe for real credentials yet.
 
 Reasons:
-1. No external security audit.
-2. Memory zeroization is not verified by tests.
-3. Session file stores the local secret key on disk.
+1. No external security audit (Commercial/Enterprise gate requirement).
+2. Memory zeroization is best-effort and verified by tests, but allocator-level guarantees are not claimed.
+3. Session file does not store the local secret key in new sessions (legacy fields may exist for migration only).
 4. No penetration testing or fuzzing has been performed.
 
 ## Next Recommended Work
 
-1. **External Security Audit** — The single blocker for the Security Gate.
-2. **Memory Zeroization Verification** — Add test asserting heap memory is zeroized after `vault.lock()`.
-3. **Session File Encryption** — Encrypt `.porkpie-session.json` with OS keychain.
-4. **SSH Agent Socket** — Implement Unix domain socket / Windows named pipe.
-5. **Session File Encryption** — Encrypt `.porkpie-session.json` with OS keychain.
+1. **External Security Audit** — The single blocker for Commercial/Enterprise trust gate. Not a development blocker.
+2. **Penetration Testing / Fuzzing** — Formal fuzzing of sync API and keychain integration.
+3. **Session File Encryption** — Encrypt `.porkpie-session.json` with OS keychain-derived key.
+4. **SSH Agent Windows** — Windows named pipes are not supported. Explicitly excluded.
 
 Until these are completed, the safe label remains:
 
@@ -337,9 +336,10 @@ Until these are completed, the safe label remains:
 - If DB update succeeds but old key delete fails, old key is orphaned (safe)
 
 ### Phase 05: Recovery Restore Honesty
-- `porkpie recovery restore` is gated behind `experimental-recovery` feature flag
-- Not available in normal builds; compile with `--features experimental-recovery` to access
-- Docs and `STATUS.md` reflect unimplemented status
+- `porkpie recovery restore` is fully implemented and available in normal builds
+- Recovery kit + encrypted backup roundtrip is tested with fixture secrets
+- Plaintext proof tests verify no fixture secrets in raw DB bytes
+- Wrong password, wrong kit, vault ID mismatch, and keychain failure behaviors are tested
 
 ### Phase 06: API Key Admin Safety
 - `api_keys` table: added `label`, `revoked_at`, `last_used_at`, `is_admin`

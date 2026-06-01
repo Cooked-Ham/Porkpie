@@ -805,6 +805,158 @@ async fn admin_revoke_api_key_rejects_self_revoke() {
         .as_str()
         .unwrap()
         .contains("Cannot revoke the API key currently in use"));
+
+    // Prove the key is still active in the database.
+    let active: (i64,) = sqlx::query_as("SELECT active FROM api_keys WHERE id = ?")
+        .bind(current_key_id)
+        .fetch_one(&pool)
+        .await
+        .expect("check active");
+    assert_eq!(active.0, 1);
+}
+
+#[tokio::test]
+async fn admin_revoke_api_key_allows_revoking_other_key() {
+    let (app, pool) = admin_app_with_pool().await;
+
+    // Add a second key.
+    let add_response = app
+        .clone()
+        .oneshot(json_request(
+            "/api/v1/admin/api-key",
+            &serde_json::json!({
+                "api_key": "other-key-1234567890123456789012345678",
+                "label": "other"
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("add response");
+    assert_eq!(add_response.status(), StatusCode::OK);
+    let add_body: serde_json::Value = response_json(add_response).await;
+    let other_key_id = add_body["key_id"].as_i64().unwrap();
+
+    // Revoke the other key using the current admin key.
+    let revoke_response = app
+        .oneshot(json_request(
+            "/api/v1/admin/api-key/revoke",
+            &serde_json::json!({
+                "key_id": other_key_id,
+                "force": false
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("revoke response");
+
+    assert_eq!(revoke_response.status(), StatusCode::OK);
+
+    // Prove the other key is now inactive.
+    let active: (i64,) = sqlx::query_as("SELECT active FROM api_keys WHERE id = ?")
+        .bind(other_key_id)
+        .fetch_one(&pool)
+        .await
+        .expect("check active");
+    assert_eq!(active.0, 0);
+}
+
+#[tokio::test]
+async fn admin_revoke_api_key_rejects_last_active_key() {
+    let (app, pool) = admin_app_with_pool().await;
+
+    // Get the key_id of the current admin key (API_KEY)
+    let current_hash = db::hash_api_key(API_KEY);
+    let row: (i64,) = sqlx::query_as("SELECT id FROM api_keys WHERE api_key_hash = ?")
+        .bind(&current_hash)
+        .fetch_one(&pool)
+        .await
+        .expect("find current key");
+    let current_key_id = row.0;
+
+    // Try to revoke the current key (self-revoke) when it is the last active key.
+    let revoke_response = app
+        .oneshot(json_request(
+            "/api/v1/admin/api-key/revoke",
+            &serde_json::json!({
+                "key_id": current_key_id,
+                "force": false
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("revoke response");
+
+    assert_eq!(revoke_response.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = response_json(revoke_response).await;
+    assert!(body["message"]
+        .as_str()
+        .unwrap()
+        .contains("Cannot revoke the last active API key"));
+
+    // Prove the key is still active.
+    let active: (i64,) = sqlx::query_as("SELECT active FROM api_keys WHERE id = ?")
+        .bind(current_key_id)
+        .fetch_one(&pool)
+        .await
+        .expect("check active");
+    assert_eq!(active.0, 1);
+}
+
+#[tokio::test]
+async fn admin_revoke_api_key_force_does_not_bypass_self_revoke() {
+    let (app, pool) = admin_app_with_pool().await;
+
+    // Add a second key so the last-key guard doesn't trigger first.
+    let add_response = app
+        .clone()
+        .oneshot(json_request(
+            "/api/v1/admin/api-key",
+            &serde_json::json!({
+                "api_key": "second-key-1234567890123456789012345678",
+                "label": "second"
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("add response");
+    assert_eq!(add_response.status(), StatusCode::OK);
+
+    // Get the key_id of the current admin key (API_KEY).
+    let current_hash = db::hash_api_key(API_KEY);
+    let row: (i64,) = sqlx::query_as("SELECT id FROM api_keys WHERE api_key_hash = ?")
+        .bind(&current_hash)
+        .fetch_one(&pool)
+        .await
+        .expect("find current key");
+    let current_key_id = row.0;
+
+    // Try to force-revoke the current key.
+    let revoke_response = app
+        .oneshot(json_request(
+            "/api/v1/admin/api-key/revoke",
+            &serde_json::json!({
+                "key_id": current_key_id,
+                "force": true
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("revoke response");
+
+    assert_eq!(revoke_response.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = response_json(revoke_response).await;
+    assert!(body["message"]
+        .as_str()
+        .unwrap()
+        .contains("Cannot revoke the API key currently in use"));
+
+    // Prove the key is still active.
+    let active: (i64,) = sqlx::query_as("SELECT active FROM api_keys WHERE id = ?")
+        .bind(current_key_id)
+        .fetch_one(&pool)
+        .await
+        .expect("check active");
+    assert_eq!(active.0, 1);
 }
 
 #[tokio::test]

@@ -1,8 +1,8 @@
 //! SSH agent foundation for Porkpie.
 //!
-//! This crate provides the signer trait, host/key policy structs, and an
-//! in-memory Ed25519 signer.  It does **not** implement OpenSSH agent
-//! socket/named-pipe integration; that is a future phase.
+//! This crate provides the signer trait, host/key policy structs, an
+//! in-memory Ed25519 signer, and OpenSSH agent Unix domain socket integration.
+//! Windows named pipes are not supported.
 
 pub mod agent;
 pub mod in_memory_signer;

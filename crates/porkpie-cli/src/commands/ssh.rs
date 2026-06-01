@@ -65,63 +65,62 @@ pub async fn run_agent(context: &CommandContext) -> Result<()> {
             ssh_keys_found = true;
 
             // Parse the private key. We support two formats:
-            // 1. Raw 64-char hex string (32 bytes) -> direct Ed25519 seed
-            // 2. Base64-encoded raw key
-            let private_key_bytes = if secret.private_key.len() == 64 {
-                // Try hex first
+            // 1. Standard OpenSSH private key PEM (e.g. `-----BEGIN OPENSSH PRIVATE KEY-----`)
+            // 2. Raw 64-char hex string (32 bytes) -> direct Ed25519 seed
+            // 3. Base64-encoded raw key
+            let signer_result = if secret.private_key.contains("OPENSSH PRIVATE KEY") {
+                porkpie_agent::Ed25519Signer::from_openssh(&secret.private_key, secret.passphrase.as_deref())
+            } else if secret.private_key.len() == 64 {
+                // Try hex
                 if let Ok(bytes) = hex::decode(&secret.private_key) {
                     if bytes.len() == 32 {
-                        bytes
+                        let seed: [u8; 32] = bytes.try_into().expect("32 bytes");
+                        Ok(porkpie_agent::Ed25519Signer::from_seed(&seed))
                     } else {
-                        eprintln!(
-                            "Warning: SSH key '{}' private key is not a valid 32-byte hex seed (decoded to {} bytes). Skipping.",
+                        Err(porkpie_agent::SignerError::KeyParse(format!(
+                            "SSH key '{}' private key is not a valid 32-byte hex seed (decoded to {} bytes).",
                             secret.name, bytes.len()
-                        );
-                        continue;
+                        )))
                     }
                 } else {
-                    eprintln!(
-                        "Warning: SSH key '{}' private key is not valid hex. Skipping.",
+                    Err(porkpie_agent::SignerError::KeyParse(format!(
+                        "SSH key '{}' private key is not valid hex.",
                         secret.name
-                    );
-                    continue;
+                    )))
                 }
             } else {
                 // Try base64
-                let decoded =
-                    match base64::engine::general_purpose::STANDARD.decode(&secret.private_key) {
-                        Ok(bytes) => bytes,
-                        Err(e) => {
-                            eprintln!(
-                            "Warning: SSH key '{}' private key is not valid base64: {e}. Skipping.",
-                            secret.name
-                        );
-                            continue;
+                match base64::engine::general_purpose::STANDARD.decode(&secret.private_key) {
+                    Ok(decoded) => {
+                        if decoded.len() == 32 {
+                            let seed: [u8; 32] = decoded.try_into().expect("32 bytes");
+                            Ok(porkpie_agent::Ed25519Signer::from_seed(&seed))
+                        } else {
+                            Err(porkpie_agent::SignerError::KeyParse(format!(
+                                "SSH key '{}' private key decoded to {} bytes (expected 32).",
+                                secret.name, decoded.len()
+                            )))
                         }
-                    };
-                if decoded.len() == 32 {
-                    decoded
-                } else {
+                    }
+                    Err(e) => {
+                        Err(porkpie_agent::SignerError::KeyParse(format!(
+                            "SSH key '{}' private key is not valid base64: {e}.",
+                            secret.name
+                        )))
+                    }
+                }
+            };
+
+            let signer = match signer_result {
+                Ok(signer) => signer,
+                Err(e) => {
                     eprintln!(
-                        "Warning: SSH key '{}' private key decoded to {} bytes (expected 32). Skipping.",
-                        secret.name, decoded.len()
+                        "Warning: SSH key '{}' could not be loaded: {}. Skipping.",
+                        secret.name, e.0
                     );
                     continue;
                 }
             };
-
-            let seed: [u8; 32] = match private_key_bytes.try_into() {
-                Ok(arr) => arr,
-                Err(_) => {
-                    eprintln!(
-                        "Warning: SSH key '{}' private key is not 32 bytes. Skipping.",
-                        secret.name
-                    );
-                    continue;
-                }
-            };
-
-            let signer = porkpie_agent::Ed25519Signer::from_seed(&seed);
             let comment = secret
                 .comment
                 .clone()

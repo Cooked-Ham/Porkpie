@@ -14,6 +14,7 @@ pub mod export;
 pub mod get;
 pub mod import;
 pub mod init;
+pub mod keychain;
 pub mod list;
 pub mod lock;
 pub mod read;

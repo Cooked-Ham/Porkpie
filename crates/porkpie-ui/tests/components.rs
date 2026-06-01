@@ -36,6 +36,32 @@ fn password_generator_state_debug_redacts_generated_password() {
 }
 
 #[test]
+fn password_generator_state_zeroizes_on_drop() {
+    use porkpie_ui::state::PasswordGeneratorState;
+    let mut state = PasswordGeneratorState {
+        generated_password: "my-secret-generated-password-123".to_string(),
+        ..PasswordGeneratorState::default()
+    };
+    state.clear_generated();
+    assert!(state.generated_password.is_empty());
+}
+
+#[test]
+fn app_state_lock_clears_decrypted_state() {
+    use porkpie_ui::state::{AppState, Screen};
+    let mut state = AppState::default();
+    state.screen = Screen::List;
+    state.password_generator.generated_password = "secret-password".to_string();
+    state.lock();
+    assert_eq!(state.screen, Screen::Unlock);
+    assert!(state.current_item.is_none());
+    assert!(state.items.is_empty());
+    assert!(state.current_vault.is_none());
+    assert!(state.unlocked_handle.is_none());
+    assert!(state.password_generator.generated_password.is_empty());
+}
+
+#[test]
 fn filters_item_list_by_title_or_type() {
     let now = Timestamp::now();
     let items = vec![

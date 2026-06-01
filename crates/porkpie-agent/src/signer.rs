@@ -7,6 +7,14 @@ use thiserror::Error;
 #[error("{0}")]
 pub struct SignerError(pub String);
 
+impl SignerError {
+    /// Create a key-parse error.
+    #[allow(non_snake_case)]
+    pub fn KeyParse(msg: String) -> Self {
+        Self(msg)
+    }
+}
+
 /// Trait for SSH key signing operations.
 ///
 /// Implementors must hold the private key in memory while the vault is unlocked

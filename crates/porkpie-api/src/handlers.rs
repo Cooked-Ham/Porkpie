@@ -121,6 +121,7 @@ pub async fn admin_add_api_key(
         .ok_or(ApiError::BadRequest("missing api_key".to_string()))?;
     let label = request.get("label").and_then(|v| v.as_str()).unwrap_or("");
     let (key_id, _key_hash) = db::upsert_api_key(&state.pool, api_key, label).await?;
+    db::log_admin_audit(&state.pool, "api_key_add").await?;
     Ok(Json(serde_json::json!({
         "ok": true,
         "key_id": key_id,
@@ -158,13 +159,19 @@ pub async fn admin_revoke_api_key(
         }
     }
 
-    let key_hash = db::revoke_api_key_by_id(&state.pool, key_id).await?;
-
-    if current_hash.0 == key_hash {
+    // Check self-revoke before mutation.
+    let target_hash = db::api_key_hash_by_id(&state.pool, key_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if current_hash.0 == target_hash {
+        db::log_admin_audit(&state.pool, "api_key_self_revoke_denied").await?;
         return Err(ApiError::BadRequest(
             "Cannot revoke the API key currently in use.".to_string(),
         ));
     }
+
+    let key_hash = db::revoke_api_key_by_id(&state.pool, key_id).await?;
+    db::log_admin_audit(&state.pool, "api_key_revoke").await?;
 
     Ok(Json(serde_json::json!({
         "ok": true,

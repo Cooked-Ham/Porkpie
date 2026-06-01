@@ -1,6 +1,6 @@
 use clap::{CommandFactory, Parser};
 use porkpie_cli::secret_store::SecretStore;
-use porkpie_cli::{BackupCommands, Cli, Commands, ItemCommands, RecoveryCommands, SshCommands};
+use porkpie_cli::{BackupCommands, Cli, Commands, ItemCommands, KeychainCommands, RecoveryCommands, SshCommands};
 use porkpie_types::{LocalSecretKey, VaultId};
 
 #[test]
@@ -437,6 +437,49 @@ fn rotate_local_secret_keychain_old_key_is_replaced() {
         old_key.to_hex(),
         "old key must be replaced"
     );
+}
+
+#[test]
+fn parses_keychain_status_command() {
+    let cli = Cli::parse_from(["porkpie", "keychain", "status"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Keychain(KeychainCommands::Status)
+    ));
+}
+
+#[test]
+fn parses_keychain_test_command() {
+    let cli = Cli::parse_from(["porkpie", "keychain", "test"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Keychain(KeychainCommands::Test)
+    ));
+}
+
+#[test]
+fn parses_keychain_forget_command() {
+    let cli = Cli::parse_from(["porkpie", "keychain", "forget", "550e8400-e29b-41d4-a716-446655440000"]);
+    assert!(matches!(
+        cli.command,
+        Commands::Keychain(KeychainCommands::Forget { vault }) if vault == "550e8400-e29b-41d4-a716-446655440000"
+    ));
+}
+
+#[test]
+fn help_text_contains_keychain_commands() {
+    let mut command = Cli::command();
+    let keychain_cmd = command
+        .find_subcommand_mut("keychain")
+        .expect("keychain subcommand exists");
+    let mut help = Vec::new();
+    keychain_cmd
+        .write_long_help(&mut help)
+        .expect("help renders");
+    let help = String::from_utf8(help).expect("help is utf8");
+    assert!(help.contains("status"));
+    assert!(help.contains("test"));
+    assert!(help.contains("forget"));
 }
 
 #[test]

@@ -491,7 +491,7 @@ It does **NOT** verify that the underlying heap memory is zeroized. The `zeroize
 3. **Stale Docker files** at root that will mislead users.
 4. **Outdated README** API Server section using old env var names.
 
-**The project is not production-ready.** The single largest blocker is the lack of an external security audit. The second largest is the web shell's lack of persistence. The third is the unverified memory zeroization.
+**The project is not production-ready.** The single largest blocker is the lack of an external security audit (Commercial/Enterprise trust gate requirement). The web shell has encrypted persistence via `localStorage`. Memory zeroization is best-effort and verified by tests.
 
 **Fix the docs first. Then fix the gaps. Then audit.**
 

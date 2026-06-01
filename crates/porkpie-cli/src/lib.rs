@@ -130,6 +130,9 @@ pub enum Commands {
     /// SSH key management commands.
     #[command(subcommand)]
     Ssh(SshCommands),
+    /// Keychain management commands.
+    #[command(subcommand)]
+    Keychain(KeychainCommands),
     /// Start the SSH agent.
     SshAgent,
 }
@@ -208,6 +211,17 @@ pub enum BackupCommands {
     },
     /// Import an encrypted backup.
     Import { file: std::path::PathBuf },
+}
+
+/// Keychain subcommands.
+#[derive(Debug, Subcommand)]
+pub enum KeychainCommands {
+    /// Show keychain status (available, backend, vault count).
+    Status,
+    /// Test keychain storage by writing and reading a test secret.
+    Test,
+    /// Forget (delete) the local secret key for a vault.
+    Forget { vault: String },
 }
 
 /// Run the parsed CLI command.
@@ -307,6 +321,15 @@ pub async fn run(cli: Cli) -> Result<()> {
             commands::ssh::run_public_key(&context, &target).await
         }
         Commands::SshAgent => commands::ssh::run_agent(&context).await,
+        Commands::Keychain(KeychainCommands::Status) => {
+            commands::keychain::run_status(&context).await
+        }
+        Commands::Keychain(KeychainCommands::Test) => {
+            commands::keychain::run_test(&context).await
+        }
+        Commands::Keychain(KeychainCommands::Forget { vault }) => {
+            commands::keychain::run_forget(&context, &vault).await
+        }
     }
 }
 

@@ -36,6 +36,5 @@ keyring = { version = "3", optional = true }
 [features]
 default = ["keychain"]
 keychain = ["keyring"]
-experimental-recovery = []
 
 [dev-dependencies]

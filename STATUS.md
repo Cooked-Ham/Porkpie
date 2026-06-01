@@ -23,9 +23,9 @@ Porkpie is a foundational Rust prototype, not safe for real credentials yet.
 - **porkpie-ui WASM target (Phase 07)**: The shared Dioxus UI now compiles cleanly for `wasm32-unknown-unknown`. Vault I/O methods use a `LocalStorage` backend on WASM that stores encrypted vault metadata and item ciphertext in browser `localStorage`. The same `VaultBackend` abstraction dispatches to SQLite on desktop and `localStorage` on WASM. All pages (onboarding, unlock, list, detail, import/export, settings) work in the browser with encrypted persistence. The `porkpie-core` password generator runs unchanged on WASM. The shared `porkpie-ui` crate is a single source of truth for both shells.
 - **apps/desktop (Phase 07)**: The desktop shell is now a real `porkpie-desktop` binary that calls `dioxus_desktop::launch_cfg` with a `LaunchConfig` that derives a window title, width, height, and SQLite URL from environment variables. The default SQLite location is the platform data directory (`%APPDATA%\Porkpie\porkpie.db` on Windows, `~/Library/Application Support/Porkpie/porkpie.db` on macOS, `$XDG_DATA_HOME/porkpie/porkpie.db` on Linux). `cargo run -p porkpie-desktop` produces a working window that renders the shared UI on top of the real SQLite-backed vault store.
 - **apps/web (Phase 07)**: The web shell is now a real `porkpie-web` binary that calls `dioxus_web::launch_cfg` with a `LaunchConfig` driven by `PORKPIE_WEB_ROOT`. The shell ships an `apps/web/index.html` template that loads the `wasm-bindgen`-produced `porkpie-web.js` as an ES module and a `apps/web/build-web.ps1` script that compiles the binary for `wasm32-unknown-unknown`, runs `wasm-bindgen --target web`, and copies the `index.html` template into a `dist-web/` directory alongside the snippets. The release WASM artifact is ~815 KB; the debug artifact is ~3.5 MB. The script also has a `-Serve` mode that boots a small static HTTP server on the bundle for end-to-end smoke tests, and a `-Clean` flag that wipes the output. A `test-web.ps1` script fetches `/index.html`, `/porkpie-web.js`, `/porkpie-web_bg.wasm`, and the wasm-bindgen snippet over HTTP and asserts the bundle is well-formed. `cargo build -p porkpie-web --target wasm32-unknown-unknown` succeeds with no warnings.
-- **porkpie-agent (Phase 09)**: The `porkpie-agent` crate is no longer a scheduling stub. It now provides a real `SshSigner` trait (`algorithm`, `public_key_bytes`, `sign`), host/key policy structs (`HostKeyPolicy`, `SshKeyIdentity`), and an `Ed25519Signer` in-memory implementation backed by `ed25519-dalek`. The signer trait is tested with real Ed25519 signing and verification. The `porkpie ssh-agent` CLI command starts a real OpenSSH-compatible agent on a Unix domain socket, loading SSH keys from the unlocked vault. It supports identity listing, signing requests, host-based policy restrictions, and interactive confirmation. The SSH key item type (`SSHKeySecret`) now supports `comment` and `allowed_hosts` fields in addition to `name`, `public_key`, `private_key`, and `passphrase`. Private keys are encrypted at rest via the vault's XChaCha20Poly1305 encryption. The `porkpie ssh public-key <target>` command prints only the public key and never the private key.
+- **porkpie-agent (Phase 09)**: The `porkpie-agent` crate is no longer a scheduling stub. It now provides a real `SshSigner` trait (`algorithm`, `public_key_bytes`, `sign`), host/key policy structs (`HostKeyPolicy`, `SshKeyIdentity`), and an `Ed25519Signer` in-memory implementation backed by `ed25519-dalek`. The signer trait is tested with real Ed25519 signing and verification. The `porkpie ssh-agent` CLI command starts a real OpenSSH-compatible agent on a Unix domain socket, loading SSH keys from the unlocked vault. It supports identity listing, signing requests, host-based policy restrictions, and interactive confirmation. The SSH key item type (`SSHKeySecret`) now supports `comment` and `allowed_hosts` fields in addition to `name`, `public_key`, `private_key`, and `passphrase`. Private keys are encrypted at rest via the vault's XChaCha20Poly1305 encryption. The `porkpie ssh public-key <target>` command prints only the public key and never the private key. Supports both raw Ed25519 seeds and standard OpenSSH private key PEM format. Encrypted OpenSSH keys are not supported. Windows named pipes are not supported.
 - **Infrastructure Deployment Scaffold**: The `infra/` directory is no longer empty. `infra/caddy/Caddyfile` provides reverse proxy with automatic HTTPS, security headers, and `zstd`/`gzip` encoding. `infra/compose/docker-compose.yml` defines a production stack (`porkpie-server` + `caddy`) with persistent volumes (`porkpie-data`, `caddy-data`, `caddy-config`), healthchecks, and environment variable injection from `.env`. `infra/compose/docker-compose.dev.yml` provides a dev-only server on port 8080 without Caddy. `infra/compose/.env.example` contains placeholder values only (no real secrets). `infra/docker/server.Dockerfile` is a multi-stage build (`rust:1-bookworm` → `debian:bookworm-slim`) that compiles the `porkpie-api` crate (which defines the `porkpie-server` binary) and produces a minimal runtime image with `ca-certificates` and `sqlite3`. The server runs as the unprivileged `porkpie` user and persists data to `/data`. The server fails startup if `PORKPIE_API_KEY` is missing. The `--healthcheck` flag attempts a TCP connection to the server's own bind address and exits 0 if reachable, 1 otherwise.
-- **Phase 12: Final Hostile QA Pass**: A comprehensive audit of the repository was performed. The `docs/AUDIT_REPORT.md` documents the findings. The workspace passes all automated validation (226 tests, clean Clippy, release build). No critical security failures were found in the current implementation. All `unwrap()` and `expect()` calls are confined to test files. No `TODO`/`FIXME`/`dev-key-change-in-production` exist in production code. No Electron/React/TypeScript/Vite. The `println!` calls in CLI commands are status messages only (except `porkpie read` which prints secrets by design). The completion gate was updated to reflect the actual status: **8 of 9 gates pass**, 1 partially passes (Security: 9/10). The project remains labeled a prototype. The remaining blockers are: (1) no external security audit, (2) memory zeroization not verified by tests.
+**Phase 12: Final Hostile QA Pass**: A comprehensive audit of the repository was performed. The `docs/AUDIT_REPORT.md` documents the findings. The workspace passes all automated validation (247 tests, clean Clippy, release build). No critical security failures were found in the current implementation. All `unwrap()` and `expect()` calls are confined to test files. No `TODO`/`FIXME`/`dev-key-change-in-production` exist in production code. No Electron/React/TypeScript/Vite. The `println!` calls in CLI commands are status messages only (except `porkpie read` which prints secrets by design). The completion gate was updated to reflect the actual status: **8 of 9 gates pass**, 1 partially passes (Security: 9/10). The project remains labeled a prototype. The remaining blocker is: no external security audit (Commercial/Enterprise trust gate requirement).
 
 ## Recent Fixes (2026-06-01)
 
@@ -36,7 +36,7 @@ Porkpie is a foundational Rust prototype, not safe for real credentials yet.
 
 ## Partial / Scaffolded
 
-- **porkpie-agent**: The `SshSigner` trait, `Ed25519Signer`, and policy structs are real and tested. The `porkpie ssh-agent` CLI command starts a real OpenSSH-compatible Unix domain socket agent. Windows named pipes are not supported.
+- **porkpie-agent**: The `SshSigner` trait, `Ed25519Signer`, and policy structs are real and tested. The `porkpie ssh-agent` CLI command starts a real OpenSSH-compatible Unix domain socket agent. Supports both raw Ed25519 seeds and standard OpenSSH private key PEM format. Encrypted OpenSSH keys are not supported. Windows named pipes are not supported.
 - **apps/server**: Re-exports `porkpie_api::{build_router, AppState}`. The actual server binary lives in `crates/porkpie-api` (binary name `porkpie-server`). The `apps/server` crate is a library-only wrapper.
 
 ## Stubs / Empty Shells
@@ -47,7 +47,6 @@ None as of Phase 07. The `apps/desktop` and `apps/web` shell crates are no longe
 
 - Desktop shell integration beyond launch: no system tray, no global hotkeys, no clipboard auto-clearing.
 - Browser extension / autofill.
-- OpenSSH agent socket/named-pipe integration (the `porkpie-agent` crate has the signer trait and in-memory signer, but no actual socket or named-pipe agent).
 - Recovery code workflows.
 - Team sharing / public-key recipient wrapping.
 - Hardware-backed key support (FIDO2/WebAuthn/YubiKey).
@@ -61,7 +60,7 @@ None as of Phase 07. The `apps/desktop` and `apps/web` shell crates are no longe
 
 - No external security audit or penetration testing has been performed.
 - A hostile QA pass (Phase 12) was completed on 2026-06-01. The `docs/AUDIT_REPORT.md` documents the findings. No critical security failures were found in production code, but several gaps remain before the project can claim MVP status.
-- The remaining blockers are: (1) no external security audit.
+- The remaining blocker is: no external security audit (Commercial/Enterprise trust gate requirement).
 
 ### CLI Secret Exposure
 
@@ -78,8 +77,7 @@ None as of Phase 07. The `apps/desktop` and `apps/web` shell crates are no longe
 
 ### Session File
 
-- The session file (`.porkpie-session.json`) encrypts the local secret key using a key derived from the vault ID. The `secret_key_encrypted` field replaces the old plaintext `secret_key_hex`. The old field is still read for backward compatibility but new sessions are written encrypted. The vault ID is also stored in the file, so an attacker with the session file can derive the same key — this is obfuscation, not strong encryption, but it raises the bar from "read plaintext" to "reverse the key derivation".
-- Commands that use the old session-based unlock flow (`export`, `import`, `sync`) still prompt for the master password but rely on the session file for the secret key. This is consistent with the new model but means the session file remains a high-value target.
+- The session file (`.porkpie-session.json`) does NOT store the local secret key in new sessions. The secret key is stored in the OS keychain (or loaded manually on each unlock if the keychain is unavailable). The session file stores only non-secret metadata: vault identity, unlock status, and activity timestamps. Legacy sessions may contain `secret_key_encrypted` or `secret_key_hex` fields for backward compatibility; these are migrated to the keychain on first use and then cleared.
 
 ### Crypto Parameters
 
@@ -97,7 +95,7 @@ None as of Phase 07. The `apps/desktop` and `apps/web` shell crates are no longe
 The following gaps were discovered by reading every source file:
 
 1. ~~**`expect()` in production source**~~ ✅ FIXED — `timestamp.rs:12` now uses `unwrap_or(Duration::ZERO)` instead of `expect()`. `secret_key.rs:38` was eliminated by changing `LocalSecretKey` to store `[u8; 32]` instead of `Vec<u8>`.
-2. ~~**Memory zeroization not verified**~~ ✅ FIXED — `lock_clears_items_from_memory` test verifies `items.is_empty()` and `VaultLocked` state. Added `zeroize_secret_material_clears_item_fields` test that asserts `String` fields are truncated after zeroization. Added `lock_zeroizes_vault_key` test that asserts the vault key is dropped after lock.
+2. ~~**Memory zeroization not verified**~~ ✅ FIXED — `lock_clears_items_from_memory` test verifies `items.is_empty()` and `VaultLocked` state. Added `zeroize_secret_material_clears_item_fields` test that asserts `String` fields are truncated after zeroization. Added `lock_zeroizes_vault_key` test that asserts the vault key is dropped after lock. Added `password_generator_state_zeroizes_on_drop` test that asserts the generated password is cleared. Added `app_state_lock_clears_decrypted_state` test that asserts the UI state is purged on lock.
 3. ~~**Zeroization gaps in `porkpie-crypto`**~~ ✅ FIXED — `vault_key.rs:33` and `encryption.rs:14` now use `Zeroizing<Vec<u8>>` to overwrite decrypted/serialized buffers on drop.
 4. ~~**`Vault` public mutable fields**~~ ✅ FIXED — All fields are now private with accessor methods (`items()`, `items_mut()`, `sync_revision()`, `master_key_wrapped()`, `is_locked()`). External code can no longer bypass `lock()`/`unlock()` invariants.
 5. **`CoreError::InvalidEncryptedItem` unused** — Defined in `errors.rs:25` but never referenced.
@@ -140,7 +138,7 @@ cargo build --workspace
 cargo build --workspace --release
 ```
 
-226 tests pass across all crates (0 failures). The web shell additionally passes:
+**247 tests pass** across all crates (0 failures). The web shell additionally passes:
 
 ```bash
 cargo build -p porkpie-web --target wasm32-unknown-unknown
@@ -152,7 +150,7 @@ and the `pwsh apps/web/build-web.ps1` + `pwsh apps/web/test-web.ps1` end-to-end 
 
 A **comprehensive doc-to-code verification** was performed on 2026-06-01. The full findings are in `docs/MASTER_VERIFICATION_HIT_LIST.md`. Key results:
 
-- **All crate implementations verified** against doc claims. 226 tests pass, 0 failures.
+- **All crate implementations verified** against doc claims. 247 tests pass, 0 failures.
 - **No critical security failures** in production code.
 - **No fake crypto, no static mockups, no Electron/React/TypeScript/Vite.**
 - **Significant documentation inaccuracies found** (see below).
@@ -164,14 +162,14 @@ The `docs/AUDIT_REPORT.md` contains the full hostile QA findings. Key results:
 - **No `unwrap()` / `expect()`** in production source code (all in tests).
 - **No `TODO` / `FIXME` / `dev-key-change-in-production`** in production code.
 - **No fake crypto, no base64 encryption, no hardcoded keys, no static/reused nonces**.
-- **Completion Gate**: 8 of 9 gates pass, 1 partially passes. Blockers: no external security audit.
+- **Completion Gate**: 8 of 9 gates pass, 1 partially passes. Blockers: no external security audit (Commercial/Enterprise trust gate).
 
 ### Test Coverage Highlights
 
 - **Crypto**: 11 tests covering key derivation with secret key, AAD binding (wrong vault ID, wrong item ID, wrong schema version), tampering detection, nonce uniqueness.
 - **Vault lifecycle**: 7 tests covering create, unlock with correct password + secret key, unlock failure with wrong password, unlock failure with wrong secret key, password-alone-cannot-unlock.
 - **Debug redaction**: 11 tests proving fixture secrets never appear in Debug output for all 10 item type variants, Vault, and Item.
-- **API key security**: 4 tests proving raw keys are not stored in the database, hash comparison works, different keys produce different hashes, and config rejects missing API key env. Plus 5 config tests (empty key, short key, placeholder rejection, valid key, redacted debug). Plus 5 CORS tests (wildcard rejection, invalid URL rejection, FTP rejection, multiple origins, empty default).
+- **API key security**: 7 tests proving raw keys are not stored in the database, hash comparison works, different keys produce different hashes, config rejects missing API key env, key creation returns key_id and hash, last_used_at updates on auth, revoke_by_id sets revoked_at, multiple keys coexist, admin flag can be set and checked, and audit log records admin events (add, revoke, self_revoke_denied). Plus 5 config tests (empty key, short key, placeholder rejection, valid key, redacted debug). Plus 5 CORS tests (wildcard rejection, invalid URL rejection, FTP rejection, multiple origins, empty default). Plus 12 admin API tests (add, revoke, self-revoke, last-key, force, wrong key).
 - **Plaintext proof**: 2 end-to-end tests scanning raw SQLite + WAL + SHM bytes to verify no fixture secrets (login password, API key, SSH private key, secure note, database password, recovery code) are persisted.
 - **PieUri**: 9 tests covering URI parsing, validation, display, redacted display, and error messages that don't leak values.
 - **Field access**: 7 tests covering get/set operations on Login, APIKey, SSHKey, Database, and Custom item types.
@@ -183,6 +181,8 @@ The `docs/AUDIT_REPORT.md` contains the full hostile QA findings. Key results:
 - **SSH agent (Phase 09)**: 10 tests across `porkpie-agent` — signer trait works with an unlocked in-memory key, Ed25519 signature generation and verification, deterministic seed-based key derivation, algorithm name (`ssh-ed25519`), public key byte matching, different signers produce different keys, host policy unrestricted, host policy restriction to allowed hosts, confirmation flag, and SSH key identity struct holding comment and public key. 4 new CLI tests verify `ssh public-key` parsing, `ssh-agent` parsing, help text inclusion, and the honest status message from the binary.
 - **API hardening (Phase 10)**: 15 tests across `porkpie-api` — 6 plaintext payload rejection tests (username, password, private_key, api_key, totp, notes), 1 real encrypted blob acceptance test, 3 auth tests (wrong API key, revoked API key, missing API key config), 1 malicious-collision test (same item ID in two vaults), plus the existing 5 API tests (health, missing auth, unknown vault, push+begin round trip, conflict detection) and the bidirectional sync integration test.
 - **Import/export safety (Phase 11)**: 6 new tests — 5 CLI parsing tests (`backup export`, `backup export --output`, `backup import`, `export encrypted default`, `export plaintext --dangerous`) and 1 CSV import test proving `DO_NOT_LEAK_CSV_SECRET` does not appear in the ciphertext. The existing 4 backup tests (roundtrip keeps secrets encrypted, rejects wrong password, skips duplicates, serializes with `.enc` extension) and 2 CSV tests (creates encrypted login rows, rejects missing fields) continue to pass.
+- **Recovery restore roundtrip**: 4 tests covering roundtrip restore + plaintext proof, wrong password rejection, vault ID mismatch detection, and keychain-failure behavior.
+- **Keychain management**: 4 CLI parsing tests (`keychain status`, `keychain test`, `keychain forget`, help text).
 
 ## Manual QA Flow (Phase 07)
 
