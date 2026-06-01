@@ -9,7 +9,7 @@ pub mod in_memory_signer;
 pub mod policy;
 pub mod signer;
 
-pub use agent::{Agent, AgentError, AgentIdentity};
+pub use agent::{run_unix_socket, stop_unix_socket, Agent, AgentError, AgentIdentity};
 pub use in_memory_signer::Ed25519Signer;
 pub use policy::{HostKeyPolicy, SshKeyIdentity};
 pub use signer::{SignerError, SshSigner};

@@ -142,6 +142,7 @@ async fn raw_sqlite_does_not_contain_fixture_secrets() {
         passphrase: None,
         comment: Some("production server key".to_string()),
         allowed_hosts: vec!["prod.example.com".to_string()],
+        require_confirmation: false,
     }));
 
     let note_item = Item::new(ItemType::SecureNote(SecureNoteSecret {

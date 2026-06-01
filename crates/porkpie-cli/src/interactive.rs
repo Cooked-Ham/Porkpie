@@ -209,6 +209,12 @@ fn prompt_ssh_key(existing: Option<&ItemType>) -> Result<ItemType> {
     } else {
         Some(passphrase).filter(|s| !s.is_empty())
     };
+    let require_confirmation = existing.map(|s| s.require_confirmation).unwrap_or(false);
+    let require_confirmation = prompt_bool(
+        "Require confirmation before each signing?",
+        require_confirmation,
+    )?;
+
     Ok(ItemType::SSHKey(SSHKeySecret {
         name: prompt_string("Name", existing.map(|s| s.name.as_str()))?,
         public_key: prompt_string("Public key", existing.map(|s| s.public_key.as_str()))?,
@@ -224,6 +230,7 @@ fn prompt_ssh_key(existing: Option<&ItemType>) -> Result<ItemType> {
         .filter(|s| !s.is_empty())
         .map(String::from)
         .collect(),
+        require_confirmation,
     }))
 }
 
@@ -453,6 +460,13 @@ fn prompt_u16(prompt: &str, default: Option<u16>) -> Result<u16> {
         input = input.default(default);
     }
     Ok(input.interact_text()?)
+}
+
+fn prompt_bool(prompt: &str, default: bool) -> Result<bool> {
+    Ok(Confirm::new()
+        .with_prompt(prompt)
+        .default(default)
+        .interact()?)
 }
 
 /// Confirm a generic action.

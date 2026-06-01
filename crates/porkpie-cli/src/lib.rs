@@ -306,7 +306,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Ssh(SshCommands::PublicKey { target }) => {
             commands::ssh::run_public_key(&context, &target).await
         }
-        Commands::SshAgent => commands::ssh::run_agent().await,
+        Commands::SshAgent => commands::ssh::run_agent(&context).await,
     }
 }
 

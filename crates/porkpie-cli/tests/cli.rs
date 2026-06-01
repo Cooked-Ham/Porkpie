@@ -178,15 +178,21 @@ fn parses_export_plaintext_requires_dangerous() {
 }
 
 #[test]
-fn ssh_agent_command_reports_honest_status() {
+fn ssh_agent_command_requires_unlocked_vault() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_porkpie"))
         .args(["ssh-agent"])
         .output()
         .expect("run porkpie ssh-agent");
 
-    assert!(output.status.success());
-    let stdout = String::from_utf8(output.stdout).expect("stdout is utf8");
-    assert!(stdout.contains("OpenSSH agent socket/named-pipe integration is not implemented yet."));
+    // Without an unlocked vault, the command should fail with a clear error.
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr is utf8");
+    assert!(
+        stderr.contains("No unlocked session")
+            || stderr.contains("not found")
+            || stderr.contains("error"),
+        "expected error about no unlocked session, got: {stderr}"
+    );
 }
 
 #[test]

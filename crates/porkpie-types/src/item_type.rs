@@ -93,6 +93,8 @@ pub struct SSHKeySecret {
     pub passphrase: Option<String>,
     pub comment: Option<String>,
     pub allowed_hosts: Vec<String>,
+    /// Require interactive approval before each signing operation.
+    pub require_confirmation: bool,
 }
 
 impl fmt::Debug for SSHKeySecret {
@@ -104,6 +106,7 @@ impl fmt::Debug for SSHKeySecret {
             .field("passphrase", &"[redacted]")
             .field("comment", &"[redacted]")
             .field("allowed_hosts", &"[redacted]")
+            .field("require_confirmation", &self.require_confirmation)
             .finish()
     }
 }

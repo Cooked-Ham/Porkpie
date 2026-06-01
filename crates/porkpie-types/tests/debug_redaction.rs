@@ -39,6 +39,7 @@ fn ssh_key_secret_debug_redacts_private_key() {
         passphrase: Some("my_ssh_passphrase".to_string()),
         comment: Some("prod key".to_string()),
         allowed_hosts: vec!["prod.example.com".to_string()],
+        require_confirmation: false,
     };
     let debug = format!("{:?}", secret);
     assert!(!debug.contains("BEGIN OPENSSH PRIVATE KEY"));
@@ -138,6 +139,7 @@ fn item_type_debug_redacts_all_variants() {
             passphrase: None,
             comment: None,
             allowed_hosts: vec![],
+            require_confirmation: false,
         }),
         ItemType::SecureNote(SecureNoteSecret {
             title: "t".to_string(),

@@ -575,6 +575,7 @@ fn build_item_type(
                 Some(notes.to_string())
             },
             allowed_hosts: vec![],
+            require_confirmation: false,
         })),
         "SecureNote" => Ok(ItemType::SecureNote(SecureNoteSecret {
             title: title.to_string(),

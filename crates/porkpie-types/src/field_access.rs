@@ -342,14 +342,15 @@ mod tests {
     #[test]
     fn sshkey_get_set_field() {
         let mut item = ItemType::SSHKey(SSHKeySecret {
-            name: "server".to_string(),
-            public_key: "ssh-rsa AAAA...".to_string(),
-            private_key: "-----BEGIN...".to_string(),
-            passphrase: Some("phrase".to_string()),
-            comment: Some("server key".to_string()),
-            allowed_hosts: vec!["github.com".to_string()],
+            name: "Test".to_string(),
+            public_key: "pk".to_string(),
+            private_key: "sk".to_string(),
+            passphrase: None,
+            comment: None,
+            allowed_hosts: vec![],
+            require_confirmation: false,
         });
-        assert_eq!(item.get_field("private_key").unwrap(), "-----BEGIN...");
+        assert_eq!(item.get_field("private_key").unwrap(), "sk");
         item.set_field("private_key", "new-private-key").unwrap();
         assert_eq!(item.get_field("private_key").unwrap(), "new-private-key");
     }
