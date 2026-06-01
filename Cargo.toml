@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/porkpie-types",
+    "crates/porkpie-crypto",
+    "crates/porkpie-core",
+    "crates/porkpie-store",
+    "crates/porkpie-sync",
+    "crates/porkpie-api",
+    "crates/porkpie-cli",
+    "crates/porkpie-ui",
+    "crates/porkpie-agent",
+    "crates/porkpie-import",
+    "apps/desktop",
+    "apps/web",
+    "apps/server"
+]

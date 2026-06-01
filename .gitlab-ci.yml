@@ -1,0 +1,42 @@
+image: rust:latest
+
+stages:
+  - verify
+
+variables:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+cache:
+  key:
+    files:
+      - Cargo.lock
+  paths:
+    - .cargo/registry
+    - .cargo/git
+    - target
+
+before_script:
+  - rustc --version
+  - cargo --version
+  - rustup component add rustfmt clippy
+
+fmt:
+  stage: verify
+  script:
+    - cargo fmt --all --check
+
+clippy:
+  stage: verify
+  script:
+    - cargo clippy --workspace -- -D warnings
+
+test:
+  stage: verify
+  script:
+    - cargo test --workspace
+
+build:
+  stage: verify
+  script:
+    - cargo build --workspace

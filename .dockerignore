@@ -1,0 +1,12 @@
+target/
+.git/
+.gitlab/
+.idea/
+.vscode/
+*.log
+*.tmp
+*.db
+*.sqlite
+*.sqlite3
+**/.DS_Store
+**/Thumbs.db

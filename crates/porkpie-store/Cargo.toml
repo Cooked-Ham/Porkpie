@@ -1,0 +1,15 @@
+[package]
+name = "porkpie-store"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+porkpie-core = { path = "../porkpie-core" }
+porkpie-types = { path = "../porkpie-types" }
+serde = { version = "1.0", features = ["derive"] }
+sqlx = { version = "0.7", features = ["sqlite", "runtime-tokio", "uuid"] }
+thiserror = "1.0"
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+[dev-dependencies]

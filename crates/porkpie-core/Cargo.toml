@@ -1,0 +1,16 @@
+[package]
+name = "porkpie-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+porkpie-types = { path = "../porkpie-types" }
+porkpie-crypto = { path = "../porkpie-crypto" }
+uuid = { version = "1.0", features = ["v4"] }
+rand = "0.8"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+secrecy = "0.8"
+zeroize = "1.6"
+
+[dev-dependencies]
