@@ -54,13 +54,25 @@ impl fmt::Debug for LocalSecretKey {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RecoveryKit {
     pub vault_id: String,
     pub local_secret_key: String,
     pub created_at: i64,
     pub instructions: Vec<String>,
     pub warning: String,
+}
+
+impl std::fmt::Debug for RecoveryKit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RecoveryKit")
+            .field("vault_id", &self.vault_id)
+            .field("local_secret_key", &"[redacted]")
+            .field("created_at", &self.created_at)
+            .field("instructions", &self.instructions)
+            .field("warning", &self.warning)
+            .finish()
+    }
 }
 
 impl RecoveryKit {

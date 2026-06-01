@@ -201,3 +201,14 @@ fn vault_debug_redacts_master_key() {
     assert!(!debug.contains("222, 173, 190, 239"));
     assert!(debug.contains("[redacted]"));
 }
+
+#[test]
+fn recovery_kit_debug_redacts_local_secret_key() {
+    let kit = RecoveryKit::new("vault-1", &LocalSecretKey::generate(), 1000);
+    let debug = format!("{:?}", kit);
+    assert!(debug.contains("[redacted]"));
+    assert!(!debug.contains(&kit.local_secret_key));
+    // JSON serialization must still contain the key for recovery purposes
+    let json = serde_json::to_string(&kit).unwrap();
+    assert!(json.contains(&kit.local_secret_key));
+}

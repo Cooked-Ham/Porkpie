@@ -35,9 +35,10 @@ This directory contains the production Docker Compose stack for Porkpie.
 
 ## Security
 
-- The server will **refuse to start** if `PORKPIE_API_KEY` is missing or set to the placeholder value.
-- No real secrets should be committed. `.env` is ignored by git.
-- API keys are hashed with SHA-256 before storage.
+- The server will **refuse to start** if `PORKPIE_API_KEY` is missing, empty, shorter than 32 characters, or equal to a known placeholder value (e.g., `replace-with-a-generated-secret`, `change-me`, `changeme`, `dev`, `test`, `password`, `secret`, `porkpie`).
+- `.env.example` will not boot a production server as-is.
+- Recovery kits and session files are sensitive. Keep them out of version control.
+- Running the CLI inside a Git repo can generate sensitive files unless paths are overridden.
 
 ## Development
 

@@ -172,7 +172,7 @@ pub async fn upsert_item_revision(
             id, vault_id, item_type, ciphertext, created_at, updated_at, sync_revision
         )
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
+        ON CONFLICT(vault_id, id) DO UPDATE SET
             item_type = excluded.item_type,
             ciphertext = excluded.ciphertext,
             updated_at = excluded.updated_at,

@@ -11,3 +11,17 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Porkpie local vault/session artifacts
+porkpie.db
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+.porkpie-session.json
+porkpie-recovery-kit-*.json
+porkpie-backup-*.json.enc
+porkpie-export-plaintext.json
+*.porkpie-backup
+*.porkpie-export

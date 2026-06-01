@@ -21,7 +21,7 @@ porkpie-import = { path = "../porkpie-import" }
 arboard = "3.6"
 porkpie-import = { path = "../porkpie-import" }
 porkpie-store = { path = "../porkpie-store" }
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "macros"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "sqlite", "macros"] }
 tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]

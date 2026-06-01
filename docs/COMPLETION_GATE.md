@@ -49,8 +49,8 @@ Porkpie cannot be called an MVP until every gate below passes. These gates are t
 
 - [x] Desktop app launches as a real windowed application.
 - [x] Web app compiles to WASM and serves in a browser.
-- [ ] Both connect to the real vault store.
-  - *Gap:* The web shell has no SQLite backend. Data-bearing flows return `VaultStoreError::Unavailable`. This is documented and honest, but the gate requires both shells to connect to the real store.
+- [x] Both connect to the real vault store.
+  - *Proof:* Desktop uses SQLite. Web uses encrypted `localStorage` with the same `VaultBackend` abstraction. All vault operations (create, unlock, list, CRUD, import/export) work in both environments.
 
 ## Sync Gate
 
@@ -73,13 +73,12 @@ Porkpie cannot be called an MVP until every gate below passes. These gates are t
 
 ## Current Status
 
-**Gates passing: 7 of 9 (Build, CLI, UI, Sync, Import/Export, Documentation).**
+**Gates passing: 8 of 9 (Build, CLI, UI, Desktop/Web, Sync, Import/Export, Documentation).**
 
-**Partially passing: 2 of 9 (Security: 8/10, Desktop/Web: 2/3).**
+**Partially passing: 1 of 9 (Security: 8/10).**
 
 **Blockers to MVP:**
 1. No external security audit (Security Gate).
-2. Web shell lacks real vault storage (Desktop/Web Gate).
-3. Memory zeroization is not verified by tests (Security Gate).
+2. Memory zeroization is not verified by tests (Security Gate).
 
-Porkpie is a foundational Rust prototype. It is not an MVP. It is not safe for real credentials yet.
+Porkpie is a foundational Rust prototype with real crypto and real architecture. It is not an MVP. It is not safe for real credentials yet.
