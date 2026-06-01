@@ -1,10 +1,12 @@
 use crate::errors::{ImportError, Result};
 use porkpie_core::Vault;
-use porkpie_store::{EncryptedItemData, EncryptedVaultData};
+use porkpie_core::{EncryptedItemData, EncryptedVaultData};
 use porkpie_types::{LocalSecretKey, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
 const BACKUP_VERSION: u32 = 1;
@@ -56,6 +58,7 @@ pub fn export_backup_file(
 }
 
 /// Write an encrypted backup payload to disk as JSON.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn write_backup_file(path: &Path, backup: &BackupFile) -> Result<()> {
     let file = File::create(path)?;
     serde_json::to_writer_pretty(file, backup)?;
@@ -63,6 +66,7 @@ pub fn write_backup_file(path: &Path, backup: &BackupFile) -> Result<()> {
 }
 
 /// Read an encrypted backup payload from disk.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn read_backup_file(path: &Path) -> Result<BackupFile> {
     let file = File::open(path)?;
     let backup: BackupFile = serde_json::from_reader(file)?;
@@ -71,6 +75,7 @@ pub fn read_backup_file(path: &Path) -> Result<BackupFile> {
 }
 
 /// Load, validate, and decrypt-check a backup before returning encrypted rows to persist.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn import_backup_file(
     path: &Path,
     password: &str,

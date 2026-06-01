@@ -15,7 +15,7 @@ pub enum ImportError {
     #[error("Core error: {0}")]
     Core(#[from] porkpie_core::CoreError),
     #[error("Store error: {0}")]
-    Store(#[from] porkpie_store::StoreError),
+    Store(String),
     #[error("invalid backup version: {0}")]
     InvalidBackupVersion(u32),
     #[error("invalid row {row}: {message}")]

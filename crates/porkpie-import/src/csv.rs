@@ -1,7 +1,7 @@
 use crate::errors::{ImportError, Result};
 use crate::validators::{normalize_item_type, required};
+use porkpie_core::EncryptedItemData;
 use porkpie_core::{Item, Vault};
-use porkpie_store::EncryptedItemData;
 use porkpie_types::{APIKeySecret, ItemType, LoginSecret, SecureNoteSecret};
 use serde::Deserialize;
 use std::io::Read;

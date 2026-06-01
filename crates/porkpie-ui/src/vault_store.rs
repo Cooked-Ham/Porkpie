@@ -1,6 +1,4 @@
-#[cfg(not(target_arch = "wasm32"))]
-use porkpie_core::Vault;
-use porkpie_core::{Item, LocalSecretKey, RecoveryKit};
+use porkpie_core::{Item, LocalSecretKey, RecoveryKit, Vault};
 use porkpie_types::{ItemId, ItemType, Timestamp, VaultId};
 use thiserror::Error;
 
@@ -637,7 +635,7 @@ mod local_storage_impl {
         Item, ItemId, ItemSummary, ItemType, LocalSecretKey, Result, Timestamp, Vault,
         VaultStoreError, VaultSummary,
     };
-    use porkpie_store::{EncryptedItemData, EncryptedVaultData};
+    use porkpie_core::{EncryptedItemData, EncryptedVaultData};
     use std::collections::HashSet;
     use std::sync::Arc;
     use std::sync::Mutex;
@@ -654,7 +652,7 @@ mod local_storage_impl {
     }
 
     impl LocalStorageState {
-        fn load_vaults(&self) -> Result<Vec<EncryptedVaultData>> {
+        pub fn load_vaults(&self) -> Result<Vec<EncryptedVaultData>> {
             let json = self
                 .storage
                 .get_item(VAULTS_KEY)
@@ -663,7 +661,7 @@ mod local_storage_impl {
             serde_json::from_str(&json).map_err(|e| VaultStoreError::Json(e.to_string()))
         }
 
-        fn save_vaults(&self, vaults: &[EncryptedVaultData]) -> Result<()> {
+        pub fn save_vaults(&self, vaults: &[EncryptedVaultData]) -> Result<()> {
             let json =
                 serde_json::to_string(vaults).map_err(|e| VaultStoreError::Json(e.to_string()))?;
             self.storage
@@ -671,7 +669,7 @@ mod local_storage_impl {
                 .map_err(|_| VaultStoreError::Database("localStorage write failed".to_string()))
         }
 
-        fn load_items(&self, vault_id: &str) -> Result<Vec<EncryptedItemData>> {
+        pub fn load_items(&self, vault_id: &str) -> Result<Vec<EncryptedItemData>> {
             let json = self
                 .storage
                 .get_item(&items_key(vault_id))
@@ -680,7 +678,7 @@ mod local_storage_impl {
             serde_json::from_str(&json).map_err(|e| VaultStoreError::Json(e.to_string()))
         }
 
-        fn save_items(&self, vault_id: &str, items: &[EncryptedItemData]) -> Result<()> {
+        pub fn save_items(&self, vault_id: &str, items: &[EncryptedItemData]) -> Result<()> {
             let json =
                 serde_json::to_string(items).map_err(|e| VaultStoreError::Json(e.to_string()))?;
             self.storage
@@ -751,6 +749,7 @@ mod local_storage_impl {
             password: &str,
             secret_key: &LocalSecretKey,
         ) -> Result<Self> {
+            let state_clone = state.clone();
             let guard = state.lock().unwrap();
             let vaults = guard.load_vaults()?;
             let stored = vaults
@@ -775,7 +774,7 @@ mod local_storage_impl {
             }
             Ok(Self {
                 summary,
-                state,
+                state: state_clone,
                 vault: Arc::new(Mutex::new(vault)),
             })
         }

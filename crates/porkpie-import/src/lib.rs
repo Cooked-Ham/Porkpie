@@ -7,7 +7,9 @@ pub mod validators;
 
 pub use csv::{import_csv_reader, import_csv_records, CsvImportResult};
 pub use encrypted_backup::{
-    backup_file_name, export_backup_file, import_backup, import_backup_file, read_backup_file,
-    write_backup_file, BackupFile, BackupImportMode, BackupImportResult,
+    backup_file_name, export_backup_file, import_backup, BackupFile, BackupImportMode,
+    BackupImportResult,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use encrypted_backup::{import_backup_file, read_backup_file, write_backup_file};
 pub use errors::{ImportError, Result};

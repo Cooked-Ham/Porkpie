@@ -1,9 +1,9 @@
+use porkpie_core::{EncryptedItemData, EncryptedVaultData};
 use porkpie_core::{Item, LocalSecretKey, Vault};
 use porkpie_import::{
     encrypted_backup::{import_backup, write_backup_file},
     export_backup_file, read_backup_file, BackupImportMode,
 };
-use porkpie_store::{EncryptedItemData, EncryptedVaultData};
 use porkpie_types::{ItemType, LoginSecret};
 use std::collections::HashSet;
 
