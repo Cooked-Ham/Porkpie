@@ -75,7 +75,12 @@ pub async fn run_agent_start(context: &CommandContext) -> Result<()> {
             } else if secret.private_key.len() == 64 {
                 if let Ok(bytes) = hex::decode(&secret.private_key) {
                     if bytes.len() == 32 {
-                        let seed: [u8; 32] = bytes.try_into().expect("32 bytes");
+                        let seed: [u8; 32] = bytes.try_into().map_err(|_| {
+                            CliError::InvalidArgument(format!(
+                                "SSH key '{}' internal error: length check passed but try_into failed.",
+                                secret.name
+                            ))
+                        })?;
                         Ok(porkpie_agent::Ed25519Signer::from_seed(&seed))
                     } else {
                         Err(porkpie_agent::SignerError::KeyParse(format!(
@@ -93,7 +98,12 @@ pub async fn run_agent_start(context: &CommandContext) -> Result<()> {
                 match base64::engine::general_purpose::STANDARD.decode(&secret.private_key) {
                     Ok(decoded) => {
                         if decoded.len() == 32 {
-                            let seed: [u8; 32] = decoded.try_into().expect("32 bytes");
+                            let seed: [u8; 32] = decoded.try_into().map_err(|_| {
+                                CliError::InvalidArgument(format!(
+                                    "SSH key '{}' internal error: length check passed but try_into failed.",
+                                    secret.name
+                                ))
+                            })?;
                             Ok(porkpie_agent::Ed25519Signer::from_seed(&seed))
                         } else {
                             Err(porkpie_agent::SignerError::KeyParse(format!(

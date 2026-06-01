@@ -12,7 +12,7 @@ Local-first, zero-knowledge, self-hostable password manager for developers, home
 - **Built With:** Rust, Dioxus, Axum, SQLx
 - **Storage:** SQLite with encrypted vault metadata and item ciphertext only
 - **Sync:** Axum API with bearer-token auth and encrypted blob replication
-- **SSH Agent:** Unix domain socket (macOS/Linux) and Windows named pipe (Windows) with OpenSSH protocol support. `ssh-add -L` and `ssh -T git@github.com` work.
+- **SSH Agent:** Unix domain socket (macOS/Linux) and Windows named pipe (Windows) transport implemented. OpenSSH protocol support for Ed25519 keys. Manual end-to-end verification on Windows pending.
 - **Desktop:** Dioxus desktop (WebView2 on Windows, WebKitGTK on Linux, WebKit on macOS)
 - **Web:** Dioxus web (WASM, no Electron, no React, no TypeScript, no Vite)
 

@@ -60,6 +60,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # We do not run `cargo test --workspace` on Windows because:
+      # - porkpie-web is a WASM target and cannot be tested on a native Windows runner.
+      # - porkpie-desktop requires GTK/WebKit system dependencies not available on windows-latest.
+      # - porkpie-crypto tests are long-running and are excluded from the Ubuntu test job too.
+      # Per-crate checks for the Windows-compatible crates (agent, cli) are run instead.
       - name: Check Windows build (agent)
         run: cargo check --target x86_64-pc-windows-msvc -p porkpie-agent
       - name: Check Windows build (cli)

@@ -54,6 +54,7 @@ None as of Phase 07. The `apps/desktop` and `apps/web` shell crates are no longe
 - Multi-device sync client configuration.
 - Third-party importers (1Password, Bitwarden, LastPass native formats).
 - Security audit or penetration testing.
+- SSH agent background/service mode on Windows (agent runs in foreground only; `Ctrl+C` to stop).
 
 ## Unsafe / Unverified
 

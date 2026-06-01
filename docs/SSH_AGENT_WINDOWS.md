@@ -28,10 +28,10 @@ porkpie ssh-agent status
 
 # Print the environment / configuration needed
 porkpie ssh-agent env
-
-# Stop guidance (foreground only on Windows)
-porkpie ssh-agent stop
 ```
+
+> **Note:** There is no `stop` subcommand on Windows. The agent runs in foreground
+> mode. Stop it by pressing `Ctrl+C` in the terminal where it is running.
 
 ---
 

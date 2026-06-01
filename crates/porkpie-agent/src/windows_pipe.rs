@@ -78,7 +78,14 @@ pub async fn run_windows_named_pipe(
             })?;
 
         server = Some(new_server);
-        let pipe = server.as_mut().unwrap();
+        let pipe = match server.as_mut() {
+            Some(p) => p,
+            None => {
+                return Err(AgentError::Protocol(
+                    "internal: server is None after creation".to_string(),
+                ));
+            }
+        };
 
         // Wait for a client to connect
         pipe.connect().await.map_err(|e| {
@@ -128,7 +135,9 @@ async fn handle_client(
             .map_err(AgentError::Io)?;
 
         let response = {
-            let agent = agent.lock().unwrap();
+            let agent = agent.lock().map_err(|_| {
+                AgentError::Protocol("agent mutex was poisoned by a panicked thread".to_string())
+            })?;
             agent.process_request(&payload)?
         };
 
