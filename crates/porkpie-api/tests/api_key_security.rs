@@ -229,7 +229,9 @@ async fn admin_flag_can_be_set_and_checked() {
 
     // Initially not admin
     assert!(
-        !db::api_key_is_admin(&pool, raw_key).await.expect("check admin"),
+        !db::api_key_is_admin(&pool, raw_key)
+            .await
+            .expect("check admin"),
         "new key should not be admin by default"
     );
 
@@ -239,14 +241,20 @@ async fn admin_flag_can_be_set_and_checked() {
         .expect("set admin");
 
     assert!(
-        db::api_key_is_admin(&pool, raw_key).await.expect("check admin"),
+        db::api_key_is_admin(&pool, raw_key)
+            .await
+            .expect("check admin"),
         "key should be admin after setting"
     );
 
     // Revoke and check
-    db::revoke_api_key_by_id(&pool, key_id).await.expect("revoke");
+    db::revoke_api_key_by_id(&pool, key_id)
+        .await
+        .expect("revoke");
     assert!(
-        !db::api_key_is_admin(&pool, raw_key).await.expect("check admin after revoke"),
+        !db::api_key_is_admin(&pool, raw_key)
+            .await
+            .expect("check admin after revoke"),
         "revoked key should not be admin"
     );
 }

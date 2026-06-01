@@ -3527,6 +3527,7 @@ version = "0.1.0"
 dependencies = [
  "porkpie-core",
  "porkpie-crypto",
+ "porkpie-import",
  "porkpie-types",
  "serde",
  "sqlx",

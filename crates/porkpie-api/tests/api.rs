@@ -602,3 +602,135 @@ async fn same_item_id_in_two_vaults_does_not_collide() {
     assert_eq!(sync_a.new_revision, 1);
     assert_eq!(sync_b.new_revision, 1);
 }
+
+async fn admin_app() -> axum::Router {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+    let (_key_id, key_hash) = db::upsert_api_key(&pool, API_KEY, "test")
+        .await
+        .expect("seed api key");
+    db::set_api_key_admin(&pool, &key_hash, true)
+        .await
+        .expect("set admin");
+    build_router(AppState {
+        pool,
+        cors_allowed_origins: vec!["https://app.porkpie.love".to_string()],
+    })
+}
+
+async fn non_admin_app() -> axum::Router {
+    let pool = db::connect("sqlite::memory:")
+        .await
+        .expect("connect database");
+    db::run_migrations(&pool).await.expect("run migrations");
+    db::upsert_api_key(&pool, API_KEY, "test")
+        .await
+        .expect("seed api key");
+    // Do NOT set admin flag
+    build_router(AppState {
+        pool,
+        cors_allowed_origins: vec!["https://app.porkpie.love".to_string()],
+    })
+}
+
+#[tokio::test]
+async fn admin_add_api_key_rejects_non_admin_key() {
+    let app = non_admin_app().await;
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/admin/api-key",
+            &serde_json::json!({
+                "api_key": "new-api-key-1234567890123456789012345678",
+                "label": "test"
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("route response");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn admin_add_api_key_accepts_admin_key() {
+    let app = admin_app().await;
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/admin/api-key",
+            &serde_json::json!({
+                "api_key": "new-api-key-1234567890123456789012345678",
+                "label": "test"
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("route response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response_json(response).await;
+    assert_eq!(body["ok"], true);
+    assert!(body["key_id"].is_number());
+    assert!(body["key_hash"].is_string());
+}
+
+#[tokio::test]
+async fn admin_revoke_api_key_rejects_non_admin_key() {
+    let app = non_admin_app().await;
+
+    let response = app
+        .oneshot(json_request(
+            "/api/v1/admin/api-key/revoke",
+            &serde_json::json!({
+                "key_id": 1,
+                "force": true
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("route response");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn admin_revoke_api_key_accepts_admin_key() {
+    let app = admin_app().await;
+
+    // First add a second key so we can revoke one without triggering the last-key guard
+    let add_response = app
+        .clone()
+        .oneshot(json_request(
+            "/api/v1/admin/api-key",
+            &serde_json::json!({
+                "api_key": "second-key-1234567890123456789012345678",
+                "label": "second"
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("add response");
+    assert_eq!(add_response.status(), StatusCode::OK);
+    let body: serde_json::Value = response_json(add_response).await;
+    let key_id = body["key_id"].as_i64().expect("key_id should be number");
+
+    // Now revoke the second key
+    let revoke_response = app
+        .oneshot(json_request(
+            "/api/v1/admin/api-key/revoke",
+            &serde_json::json!({
+                "key_id": key_id,
+                "force": false
+            }),
+            Some(API_KEY),
+        ))
+        .await
+        .expect("revoke response");
+
+    assert_eq!(revoke_response.status(), StatusCode::OK);
+    let body: serde_json::Value = response_json(revoke_response).await;
+    assert_eq!(body["ok"], true);
+}

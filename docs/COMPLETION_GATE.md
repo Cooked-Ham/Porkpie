@@ -76,9 +76,11 @@ Porkpie cannot be called an MVP until every gate below passes. These gates are t
 **Gates passing: 8 of 9 (Build, CLI, UI, Desktop/Web, Sync, Import/Export, Documentation).**
 
 **Partially passing: 1 of 9 (Security: 9/10).**
+*(Note: SSH agent socket integration and automatic backup before rotation are now implemented.)*
 
 **Blockers to MVP:**
 1. No external security audit (Security Gate).
 2. Memory zeroization is verified by state tests but not by raw memory probe tests (Security Gate).
+3. Session file no longer stores local secret key in new sessions; legacy migration exists.
 
 Porkpie is a foundational Rust prototype with real crypto and real architecture. It is not an MVP. It is not safe for real credentials yet.

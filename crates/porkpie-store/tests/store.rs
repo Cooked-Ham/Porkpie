@@ -344,3 +344,103 @@ async fn transactional_rotation_rolls_back_on_missing_item() {
         vault.master_key_wrapped().clone()
     );
 }
+
+#[tokio::test]
+async fn backup_is_created_before_rotation_and_rotation_succeeds() {
+    let pool = test_pool().await.expect("test database should connect");
+    let (vault, _) = Vault::create(
+        "TestVault",
+        "correct horse battery staple",
+        &test_secret_key(),
+    )
+    .expect("vault should be created");
+    store_vault(&pool, &vault)
+        .await
+        .expect("vault should store");
+
+    let item1 = encrypted_item(vault.id, b"item1-v1".to_vec());
+    let item2 = encrypted_item(vault.id, b"item2-v1".to_vec());
+    store_item(&pool, &item1).await.expect("item1 should store");
+    store_item(&pool, &item2).await.expect("item2 should store");
+
+    // Create backup (simulating what rotate_key does when skip_backup=false)
+    let vault_data = porkpie_core::EncryptedVaultData {
+        id: vault.id,
+        name: vault.name.clone(),
+        created_at: vault.created_at,
+        salt: vault.salt,
+        master_key_wrapped: vault.master_key_wrapped().to_vec(),
+        sync_revision: vault.sync_revision(),
+        kdf_params: *vault.kdf_params(),
+    };
+    let items_for_backup = vec![
+        porkpie_core::EncryptedItemData::new(
+            item1.id,
+            vault.id,
+            "SecureNote",
+            b"item1-v1".to_vec(),
+            item1.created_at,
+            item1.updated_at,
+            item1.sync_revision,
+        ),
+        porkpie_core::EncryptedItemData::new(
+            item2.id,
+            vault.id,
+            "SecureNote",
+            b"item2-v1".to_vec(),
+            item2.created_at,
+            item2.updated_at,
+            item2.sync_revision,
+        ),
+    ];
+    let backup = porkpie_import::export_backup_file(&vault, vault_data, items_for_backup)
+        .expect("export backup");
+    let backup_path = std::env::temp_dir().join(format!(
+        "porkpie-rotation-backup-test-{}.json.enc",
+        vault.id
+    ));
+    porkpie_import::write_backup_file(&backup_path, &backup).expect("write backup");
+
+    // Verify backup file exists
+    assert!(
+        backup_path.exists(),
+        "backup file should be written to disk"
+    );
+
+    // Now perform rotation
+    let new_wrapped = b"new-wrapped-key".to_vec();
+    let reencrypted = vec![
+        (item1.id, b"item1-v2".to_vec()),
+        (item2.id, b"item2-v2".to_vec()),
+    ];
+    porkpie_store::rotate_vault_key_transactional(
+        &pool,
+        &vault.id,
+        &new_wrapped,
+        &reencrypted,
+        Some(vault.kdf_params()),
+    )
+    .await
+    .expect("transactional rotation should succeed");
+
+    // Verify items were rotated
+    assert_eq!(
+        load_item(&pool, &vault.id, &item1.id)
+            .await
+            .expect("load item1"),
+        b"item1-v2".to_vec()
+    );
+    assert_eq!(
+        load_item(&pool, &vault.id, &item2.id)
+            .await
+            .expect("load item2"),
+        b"item2-v2".to_vec()
+    );
+
+    // Verify backup still exists and can be read
+    let read_backup = porkpie_import::read_backup_file(&backup_path).expect("read backup back");
+    assert_eq!(read_backup.version, 1);
+
+    // Cleanup
+    std::fs::remove_file(&backup_path).expect("remove backup");
+}

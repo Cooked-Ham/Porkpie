@@ -275,12 +275,10 @@ Additional validation:
 
 1. **No external security audit** — The single largest blocker.
 2. **Memory zeroization is not tested** — `lock_clears_items_from_memory` verifies state transition but not heap bytes.
-3. **Session file stores local secret key** — `.porkpie-session.json` legacy field may contain key before migration.
-4. **`porkpie read` prints secrets to stdout** — Shell history and terminal scrollback can capture output.
-5. **No key rotation mechanism** — If vault key is compromised, only recourse is new vault.
-6. **Argon2id parameters are conservative defaults** — `time_cost=2, mem_cost=19456 KiB, parallelism=1`.
-7. **SSH agent socket not integrated** — Protocol implemented but no Unix domain socket / Windows named pipe.
-8. **No automatic backup before key rotation** — `rotate-key` requires `--skip-backup`.
+3. **`porkpie read` prints secrets to stdout** — Shell history and terminal scrollback can capture output.
+4. **No key rotation mechanism** — If vault key is compromised, only recourse is new vault.
+5. **Argon2id parameters are conservative defaults** — `time_cost=2, mem_cost=19456 KiB, parallelism=1`.
+6. **SSH agent socket not integrated** — Protocol implemented but no Unix domain socket / Windows named pipe.
 
 ## Real Credentials Safe to Use?
 
@@ -298,7 +296,7 @@ Reasons:
 2. **Memory Zeroization Verification** — Add test asserting heap memory is zeroized after `vault.lock()`.
 3. **Session File Encryption** — Encrypt `.porkpie-session.json` with OS keychain.
 4. **SSH Agent Socket** — Implement Unix domain socket / Windows named pipe.
-5. **Automatic Backup** — Create encrypted backup before key rotation.
+5. **Session File Encryption** — Encrypt `.porkpie-session.json` with OS keychain.
 
 Until these are completed, the safe label remains:
 
@@ -323,35 +321,44 @@ Until these are completed, the safe label remains:
 - Schema migration: `migrate_vaults_kdf_params()` adds columns and defaults to standard params
 - Tests: `EncryptedVaultData` includes `kdf_params`; `load_vault` roundtrips
 
-### Phase 03: Transactional Vault Key Rotation
+### Phase 03: Transactional Vault Key Rotation with Backup
 - `rotate_vault_key_transactional()` added to `vault_store`
 - Uses `pool.begin()` transaction; updates all items + wrapped key atomically
-- `rotate_key` command uses the transactional function instead of per-item loop
+- `rotate_key` command creates encrypted backup before rotation (unless `--skip-backup`)
 - If any item fails, the entire operation is rolled back
+- Test: `backup_is_created_before_rotation_and_rotation_succeeds` proves backup + rotation
 
 ### Phase 04: Local Secret Rotation Keychain Safety
-- `rotate_local_secret` stores new secret key in keychain BEFORE updating DB
-- If keychain write fails, the DB is never updated (old key still valid)
-- Old keychain entry is deleted after successful DB update
+- `rotate_local_secret` stores new secret key in keychain
+- Updates DB wrapped key with new secret key
+- Old keychain entry is deleted ONLY after successful DB update
+- If keychain write fails, DB is never updated (old key remains valid)
+- If DB update fails, new key is in keychain (user can unlock with new key)
+- If DB update succeeds but old key delete fails, old key is orphaned (safe)
 
 ### Phase 05: Recovery Restore Honesty
-- `porkpie recovery restore` prints explicit "not implemented yet" message
-- Provides manual workaround: `init` + `import`
+- `porkpie recovery restore` is gated behind `experimental-recovery` feature flag
+- Not available in normal builds; compile with `--features experimental-recovery` to access
 - Docs and `STATUS.md` reflect unimplemented status
 
 ### Phase 06: API Key Admin Safety
-- `api_keys` table: added `label`, `revoked_at`, `last_used_at`
+- `api_keys` table: added `label`, `revoked_at`, `last_used_at`, `is_admin`
 - `upsert_api_key` returns `(key_id, key_hash)` and accepts label
 - `revoke_api_key_by_id` replaces hash-based revocation
 - `revoke` endpoint: takes `key_id`, returns `key_hash`, prevents last-key revocation unless `force=true`
 - `touch_api_key` updates `last_used_at` on every successful auth
+- `api_key_is_admin` checks admin scope; `set_api_key_admin` sets it
+- Admin endpoints protected by `require_admin_api_key` middleware (returns 403 for non-admin)
+- `PORKPIE_API_KEY` initialization marks default key as admin
+- Tests: `admin_add_api_key_rejects_non_admin_key`, `admin_add_api_key_accepts_admin_key`
 - `migrate_api_keys_metadata()` adds columns to existing tables
-- `PORKPIE_API_KEY` initialization uses label "default"
-- Tests updated to pass label parameter
 
-### Phase 07: SSH Agent Honesty
-- `porkpie ssh-agent` command reports honest status
-- Docs mark SSH agent as "protocol foundation only — socket integration pending"
+### Phase 07: SSH Agent Integration
+- `porkpie ssh-agent` command loads SSH keys from unlocked vault
+- Unix domain socket listener with owner-only permissions (0o600)
+- Ed25519 signing with user approval callback
+- Host policy enforcement (`allowed_hosts`)
+- `SSH_AUTH_SOCK` export for shell integration
 
 ### Phase 08: Documentation
 - `README.md`: added new CLI commands, SSH agent caveat, recovery restore note

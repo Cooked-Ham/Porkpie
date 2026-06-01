@@ -49,7 +49,10 @@
 - [x] Master password change (re-wraps vault key)
 - [x] Argon2id calibration and KDF profiles
 - [x] Safer secret output (`--no-newline`, TTY warnings, clipboard clear)
-- [x] SSH agent protocol wire format (Ed25519 signing) — socket integration pending
+- [x] SSH agent protocol wire format (Ed25519 signing)
+- [x] SSH agent Unix domain socket integration with owner-only permissions
+- [x] User approval callback for signing requests
+- [x] Host policy enforcement for SSH agent
 - [x] API key rotation endpoints (admin add/revoke)
 - [x] Property-based fuzzing (crypto roundtrip, ID parsing, nonce uniqueness)
 - [x] Startup self-check for DB path validation
@@ -58,7 +61,7 @@
 
 ### Short Term (Next 30 days)
 - [ ] Memory zeroization test harness (probe memory after lock)
-- [ ] SSH agent socket integration (Unix domain socket / Windows named pipe)
+- [x] SSH agent socket integration (Unix domain socket)
 - [ ] Browser extension for web vault autofill
 - [ ] System tray / hotkey for quick lock
 - [ ] TOTP generation and storage
@@ -66,7 +69,7 @@
 - [ ] Audit logging for all vault operations
 - [ ] Rate limiting on sync endpoints
 - [ ] Certificate pinning for sync server
-- [ ] Automatic backup before key rotation
+- [x] Automatic backup before key rotation (encrypted backup created before `rotate-key`)
 
 ### Medium Term (3-6 months)
 - [ ] Hardware security key (YubiKey) support for local secret key
